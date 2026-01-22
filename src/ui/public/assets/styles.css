@@ -1,18 +1,24 @@
-/* Ophan UI Styles */
+/* Ophan UI Styles
+ * Brand Kit Colors:
+ * - Primary Gold: #B9A46D
+ * - Dark Background: #0d0d0d
+ */
 
 :root {
-  --bg-dark: #0d1117;
-  --bg-card: #161b22;
-  --bg-hover: #21262d;
-  --border-color: #30363d;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #6e7681;
-  --accent-blue: #58a6ff;
-  --accent-green: #3fb950;
-  --accent-yellow: #d29922;
-  --accent-red: #f85149;
-  --accent-purple: #a371f7;
+  --bg-dark: #0d0d0d;
+  --bg-card: #161616;
+  --bg-hover: #1f1f1f;
+  --border-color: #2a2a2a;
+  --text-primary: #e6e6e6;
+  --text-secondary: #8b8b8b;
+  --text-muted: #6e6e6e;
+  --accent-gold: #B9A46D;
+  --accent-gold-light: #d4c28a;
+  --accent-gold-dark: #8a7a4f;
+  --accent-green: #5cb85c;
+  --accent-yellow: #d4a84b;
+  --accent-red: #d9534f;
+  --accent-blue: #6b8fad;
   --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
 }
 
@@ -49,12 +55,22 @@ body {
 .logo {
   padding: 20px;
   border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.logo-img {
+  width: 40px;
+  height: 40px;
 }
 
 .logo h1 {
   font-size: 24px;
   font-weight: 600;
-  color: var(--accent-purple);
+  color: var(--accent-gold);
+  margin: 0;
 }
 
 .logo .tagline {
@@ -85,7 +101,7 @@ body {
 .nav-links li a.active {
   background-color: var(--bg-hover);
   color: var(--text-primary);
-  border-left: 2px solid var(--accent-purple);
+  border-left: 2px solid var(--accent-gold);
 }
 
 .sidebar-footer {
@@ -264,7 +280,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 12px;
-  color: var(--accent-blue);
+  color: var(--accent-gold);
 }
 
 .config-items {
@@ -300,13 +316,13 @@ body {
 }
 
 .btn-primary {
-  background-color: var(--accent-green);
-  color: white;
-  border-color: var(--accent-green);
+  background-color: var(--accent-gold);
+  color: #0d0d0d;
+  border-color: var(--accent-gold);
 }
 
 .btn-primary:hover {
-  background-color: #2ea043;
+  background-color: var(--accent-gold-light);
 }
 
 .btn-secondary {
@@ -477,7 +493,7 @@ body {
 .tab.active {
   background-color: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--accent-purple);
+  border-color: var(--accent-gold);
 }
 
 /* Guidelines/Criteria Content */
@@ -488,7 +504,7 @@ body {
 .guidelines-file h4 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent-blue);
+  color: var(--accent-gold);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -531,7 +547,7 @@ body {
 
 .digest-item.active {
   background-color: var(--bg-hover);
-  border: 1px solid var(--accent-purple);
+  border: 1px solid var(--accent-gold);
 }
 
 .digest-date {

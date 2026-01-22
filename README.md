@@ -1,10 +1,18 @@
 <p align="center">
-  <img src="docs/ophan_logo.png" alt="Ophan Logo" width="200">
+  <img src="docs/ophan-readme-header.png" alt="Ophan - Self-improving dev agent" width="600">
 </p>
 
-# Ophan
+<p align="center">
+  <strong>A self-improving AI development agent based on the Two-Loop Paradigm</strong>
+</p>
 
-A self-improving AI development agent based on the **Two-Loop Paradigm**.
+<p align="center">
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#the-two-loop-paradigm">How It Works</a> •
+  <a href="#documentation">Documentation</a>
+</p>
+
+---
 
 > *"Ophan"* references the biblical Ophanim—"wheels within wheels" from Ezekiel's vision—representing nested loops that autonomously adapt while observing and learning continuously.
 

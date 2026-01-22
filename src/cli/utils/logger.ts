@@ -11,6 +11,10 @@ const levelPriority: Record<LogLevel, number> = {
   error: 3,
 };
 
+// Brand color: Ophan gold (#B9A46D)
+const gold = chalk.hex('#B9A46D');
+const goldBold = chalk.hex('#B9A46D').bold;
+
 /**
  * Set the current log level
  */
@@ -69,8 +73,8 @@ export const logger = {
   section(title: string): void {
     if (shouldLog('info')) {
       console.log();
-      console.log(chalk.bold.blue(title));
-      console.log(chalk.blue('─'.repeat(title.length)));
+      console.log(goldBold(title));
+      console.log(gold('─'.repeat(title.length)));
     }
   },
 

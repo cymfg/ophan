@@ -8,6 +8,9 @@ import {
   loadState,
 } from '../utils/config.js';
 
+// Brand color: Ophan gold (#B9A46D)
+const gold = chalk.hex('#B9A46D');
+
 export const statusCommand = new Command('status')
   .description('Show Ophan status and metrics')
   .action(async () => {
@@ -40,8 +43,8 @@ async function runStatus(): Promise<void> {
 
   // Header
   console.log();
-  console.log(chalk.bold('Ophan Status'));
-  console.log(chalk.dim('═'.repeat(40)));
+  console.log(gold.bold('Ophan Status'));
+  console.log(gold('═'.repeat(40)));
   console.log();
 
   // Tasks section

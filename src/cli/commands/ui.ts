@@ -14,6 +14,9 @@ import {
 import { logger } from '../utils/logger.js';
 import { createUIServer } from '../../ui/server.js';
 
+// Brand color: Ophan gold (#B9A46D)
+const gold = chalk.hex('#B9A46D');
+
 const DEFAULT_PORT = 4040;
 
 export function createUICommand(): Command {
@@ -52,7 +55,7 @@ async function runUI(options: UIOptions): Promise<void> {
   }
 
   logger.blank();
-  logger.info(chalk.bold('Starting Ophan UI...'));
+  logger.info(gold.bold('Starting Ophan UI...'));
   logger.keyValue('Project', projectRoot);
   logger.keyValue('Port', String(port));
   logger.blank();
@@ -67,7 +70,7 @@ async function runUI(options: UIOptions): Promise<void> {
     await server.start();
 
     const url = `http://localhost:${port}`;
-    logger.success(`Ophan UI running at ${chalk.cyan(url)}`);
+    logger.success(`Ophan UI running at ${gold(url)}`);
     logger.blank();
     logger.info('Press Ctrl+C to stop');
 
