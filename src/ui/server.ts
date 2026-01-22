@@ -10,6 +10,7 @@ import { createServer, type Server } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import { loadConfig, saveConfig, loadState, saveState } from '../cli/utils/config.js';
 import type { OphanStateOutput } from '../types/state.js';
 import type { Task, Evaluation, EscalationPayload } from '../types/index.js';
@@ -17,6 +18,29 @@ import { InnerLoop } from '../core/inner-loop.js';
 import { TaskLogger } from '../core/task-logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Find the public directory for static assets.
+ * Works both in development (src/ui/public) and when installed from npm (dist/ui/public).
+ */
+function findPublicDir(): string {
+  // In development: __dirname is src/ui, public is at src/ui/public
+  const devPath = path.join(__dirname, 'public');
+  if (existsSync(devPath)) {
+    return devPath;
+  }
+
+  // When bundled: __dirname is dist/cli, public is at dist/ui/public
+  const distPath = path.join(__dirname, '..', 'ui', 'public');
+  if (existsSync(distPath)) {
+    return distPath;
+  }
+
+  // Fallback to dev path (will error with clear message if not found)
+  return devPath;
+}
+
+const publicDir = findPublicDir();
 
 export interface UIServerOptions {
   projectRoot: string;
@@ -55,7 +79,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
 
   // Middleware
   app.use(express.json());
-  app.use(express.static(path.join(__dirname, 'public')));
+  app.use(express.static(publicDir));
 
   // API Routes
 
@@ -471,7 +495,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
   // Serve index.html for all non-API routes (SPA fallback)
   // Express 5 uses path-to-regexp v8 which requires named parameters
   app.get('/{*path}', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(publicDir, 'index.html'));
   });
 
   // Broadcast function
