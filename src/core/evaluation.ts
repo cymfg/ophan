@@ -138,23 +138,20 @@ export class EvaluationEngine {
 
   /**
    * Combine quick evaluation with full LLM evaluation
+   *
+   * IMPORTANT: Always runs full LLM evaluation to check custom criteria.
+   * This ensures that product constraints (like "only build calculator features")
+   * are enforced even when tests pass. Critical for autonomous operation.
    */
   async fullEvaluation(options: EvaluationOptions): Promise<EvaluationResult> {
-    // First do quick tool-based evaluation
+    // First do quick tool-based evaluation (tests, lint, build, etc.)
     const quickEval = this.evaluateToolOutputs(options.toolOutputs);
 
-    // If quick eval found critical failures, return early
-    const criticalFailure = quickEval.failures.some(
-      (f) => f.severity === 'error'
-    );
-    if (criticalFailure) {
-      return quickEval;
-    }
-
-    // Otherwise, do full LLM evaluation
+    // Always run full LLM evaluation to check custom criteria
+    // This is essential for enforcing product constraints and guidelines
     const fullEval = await this.evaluate(options);
 
-    // Merge results
+    // Merge results - task must pass BOTH tool checks AND criteria
     return {
       passed: quickEval.passed && fullEval.passed,
       criteria: [...new Set([...quickEval.criteria, ...fullEval.criteria])],
