@@ -1,6 +1,6 @@
 {
   "name": "ophan",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A self-improving AI development agent based on the Two-Loop Paradigm",
   "type": "module",
   "main": "dist/cli/index.js",

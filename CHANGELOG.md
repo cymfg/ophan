@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-01-22
+
+### Fixed
+- Fixed inner loop marking tasks as "converged" even when criteria evaluation failed
+  - Previously, if the agent signaled task completion, it would converge regardless of evaluation
+  - Now tasks only converge when evaluation.passed is true
+  - This ensures the agent must satisfy all criteria before task is considered successful
+
 ## [0.4.0] - 2025-01-22
 
 ### Fixed
@@ -63,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved UI styling with dark theme
 - Upgraded zod to v4 for compatibility with Claude Agent SDK
 
-[Unreleased]: https://github.com/cymfg/ophan/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cymfg/ophan/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/cymfg/ophan/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/cymfg/ophan/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/cymfg/ophan/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/cymfg/ophan/compare/v0.3.0...v0.3.2

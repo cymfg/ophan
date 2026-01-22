@@ -182,11 +182,15 @@ export class InnerLoop {
       this.options.onIteration?.(iteration, evaluation);
       this.log(this.evaluator.formatEvaluation(evaluation));
 
-      // Check if we're done
-      if (evaluation.passed || completed) {
+      // Check if we're done - ONLY converge if evaluation passes
+      // The agent signaling "completed" is not enough; criteria must be satisfied
+      if (evaluation.passed) {
         task.status = 'converged';
         break;
       }
+
+      // If agent thinks it's done but evaluation failed, continue iterating
+      // This forces the agent to address criteria violations
 
       // Check cost limit
       const currentCost = this.claude.estimateCost(
