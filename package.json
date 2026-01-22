@@ -1,6 +1,6 @@
 {
   "name": "ophan",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A self-improving AI development agent based on the Two-Loop Paradigm",
   "type": "module",
   "main": "dist/cli/index.js",
@@ -15,12 +15,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/ophan.git"
+    "url": "git+https://github.com/cymfg/ophan.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/ophan/issues"
+    "url": "https://github.com/cymfg/ophan/issues"
   },
-  "homepage": "https://github.com/yourusername/ophan#readme",
+  "homepage": "https://github.com/cymfg/ophan#readme",
   "scripts": {
     "build": "esbuild src/cli/index.ts --bundle --platform=node --target=node18 --outfile=dist/cli/index.js --format=esm --external:@anthropic-ai/sdk --external:simple-git --external:yaml --external:zod --external:commander --external:inquirer --external:chalk --external:ora --external:glob --external:express --external:ws --external:open && cp -r src/ui/public dist/ui/",
     "dev": "tsx src/cli/index.ts",
@@ -40,7 +40,10 @@
     "self-improving",
     "two-loop"
   ],
-  "author": "",
+  "author": "Matthew Yeager",
+  "contributors": [
+    "Donald Thompson (Two-Loop Paradigm)"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

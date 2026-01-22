@@ -7,6 +7,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/cymfg/ophan/actions/workflows/ci.yml"><img src="https://github.com/cymfg/ophan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/ophan"><img src="https://img.shields.io/npm/v/ophan.svg" alt="npm version"></a>
+  <a href="https://github.com/cymfg/ophan/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/ophan.svg" alt="license"></a>
+  <a href="https://www.npmjs.com/package/ophan"><img src="https://img.shields.io/npm/dm/ophan.svg" alt="downloads"></a>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#the-two-loop-paradigm">How It Works</a> •
   <a href="#documentation">Documentation</a>
