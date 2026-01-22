@@ -36,10 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task logging to `.ophan/logs/`
 - Cost tracking and iteration limits
 - Escalation on max iterations or cost limit exceeded
+- GitHub Actions CI workflow for automated testing
+- CONTRIBUTING.md with contribution guidelines
 
 ### Changed
 - Updated CLI output colors to match brand guidelines (gold accent)
 - Improved UI styling with dark theme
+- Upgraded zod to v4 for compatibility with Claude Agent SDK
 
 [Unreleased]: https://github.com/cymfg/ophan/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/cymfg/ophan/releases/tag/v0.3.0

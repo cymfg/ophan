@@ -1,6 +1,6 @@
 {
   "name": "ophan",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A self-improving AI development agent based on the Two-Loop Paradigm",
   "type": "module",
   "main": "dist/cli/index.js",
@@ -63,7 +63,7 @@
     "simple-git": "^3.27.0",
     "ws": "^8.19.0",
     "yaml": "^2.6.1",
-    "zod": "^3.24.1"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.7",

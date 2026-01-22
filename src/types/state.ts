@@ -54,9 +54,27 @@ export const OphanStateSchema = z.object({
   tasksSinceReview: z.number().int().nonnegative().default(0),
   pendingProposals: z.array(ProposalSchema).default([]),
   learnings: z.array(LearningSchema).default([]),
-  metrics: MetricsSchema.default({
-    periodStart: new Date().toISOString(),
-    periodEnd: new Date().toISOString(),
+  metrics: MetricsSchema.default(() => {
+    const now = new Date().toISOString();
+    return {
+      totalTasks: 0,
+      successfulTasks: 0,
+      failedTasks: 0,
+      escalatedTasks: 0,
+      successRate: 0,
+      averageIterations: 0,
+      maxIterationsHit: 0,
+      totalTokensUsed: 0,
+      totalCost: 0,
+      averageCostPerTask: 0,
+      averageTaskDuration: 0,
+      totalTimeSpent: 0,
+      totalLearnings: 0,
+      learningsPromoted: 0,
+      patternsDetected: 0,
+      periodStart: now,
+      periodEnd: now,
+    };
   }),
 });
 

@@ -8,7 +8,7 @@ export const WebhookConfigSchema = z.object({
   name: z.string(),
   url: z.string().url(),
   method: z.enum(['POST', 'PUT']).default('POST'),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   events: z.array(z.enum(['escalation', 'task_complete', 'digest'])),
 });
 
@@ -30,12 +30,25 @@ export const ExecutionConfigSchema = z.object({
         .default(['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep']),
       maxTurns: z.number().int().positive().default(50),
     })
-    .default({}),
+    .default(() => ({
+      model: 'sonnet' as const,
+      permissionMode: 'acceptEdits' as const,
+      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+      maxTurns: 50,
+    })),
 });
 
 export const OphanConfigSchema = z.object({
   // Execution backend configuration
-  execution: ExecutionConfigSchema.default({}),
+  execution: ExecutionConfigSchema.default(() => ({
+    backend: 'api' as const,
+    claudeCode: {
+      model: 'sonnet' as const,
+      permissionMode: 'acceptEdits' as const,
+      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+      maxTurns: 50,
+    },
+  })),
 
   // Model settings (used by API backend)
   model: z
@@ -43,7 +56,10 @@ export const OphanConfigSchema = z.object({
       name: z.string().default('claude-sonnet-4-20250514'),
       maxTokens: z.number().int().positive().default(4096),
     })
-    .default({}),
+    .default(() => ({
+      name: 'claude-sonnet-4-20250514',
+      maxTokens: 4096,
+    })),
 
   innerLoop: z
     .object({
@@ -53,7 +69,11 @@ export const OphanConfigSchema = z.object({
         .default('informed'),
       costLimit: z.number().positive().optional(),
     })
-    .default({}),
+    .default(() => ({
+      maxIterations: 5,
+      regenerationStrategy: 'informed' as const,
+      costLimit: undefined,
+    })),
 
   outerLoop: z
     .object({
@@ -62,7 +82,7 @@ export const OphanConfigSchema = z.object({
           afterTasks: z.number().int().positive().default(10),
           schedule: z.string().optional(),
         })
-        .default({}),
+        .default(() => ({ afterTasks: 10, schedule: undefined })),
       minOccurrences: z.number().int().positive().default(3),
       minConfidence: z.number().min(0).max(1).default(0.7),
       lookbackDays: z.number().int().positive().default(30),
@@ -74,9 +94,26 @@ export const OphanConfigSchema = z.object({
           promotionThreshold: z.number().int().positive().default(3),
           similarityThreshold: z.number().min(0).max(1).default(0.9),
         })
-        .default({}),
+        .default(() => ({
+          maxCount: 50,
+          retentionDays: 90,
+          promotionThreshold: 3,
+          similarityThreshold: 0.9,
+        })),
     })
-    .default({}),
+    .default(() => ({
+      triggers: { afterTasks: 10, schedule: undefined },
+      minOccurrences: 3,
+      minConfidence: 0.7,
+      lookbackDays: 30,
+      maxProposals: 5,
+      learnings: {
+        maxCount: 50,
+        retentionDays: 90,
+        promotionThreshold: 3,
+        similarityThreshold: 0.9,
+      },
+    })),
 
   guardrails: z
     .object({
@@ -84,7 +121,11 @@ export const OphanConfigSchema = z.object({
       allowedCommands: z.array(z.string()).default([]),
       blockedCommands: z.array(z.string()).default(['rm -rf /', 'sudo rm']),
     })
-    .default({}),
+    .default(() => ({
+      protectedPaths: ['.ophan/criteria/**'],
+      allowedCommands: [],
+      blockedCommands: ['rm -rf /', 'sudo rm'],
+    })),
 
   escalations: z
     .object({
