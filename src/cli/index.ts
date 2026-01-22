@@ -6,6 +6,7 @@ import { taskCommand } from './commands/task.js';
 import { reviewCommand } from './commands/review.js';
 import { statusCommand } from './commands/status.js';
 import { logsCommand } from './commands/logs.js';
+import { createUICommand } from './commands/ui.js';
 import { setLogLevel } from './utils/logger.js';
 
 const program = new Command();
@@ -30,6 +31,7 @@ program.addCommand(taskCommand);
 program.addCommand(reviewCommand);
 program.addCommand(statusCommand);
 program.addCommand(logsCommand);
+program.addCommand(createUICommand());
 
 // Parse and execute
 program.parse();

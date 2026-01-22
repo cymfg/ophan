@@ -12,7 +12,32 @@ export const WebhookConfigSchema = z.object({
   events: z.array(z.enum(['escalation', 'task_complete', 'digest'])),
 });
 
+/**
+ * Execution backend configuration
+ */
+export const ExecutionConfigSchema = z.object({
+  backend: z.enum(['api', 'claude-code']).default('api'),
+
+  // Settings for Claude Code backend
+  claudeCode: z
+    .object({
+      model: z.enum(['sonnet', 'opus', 'haiku']).default('sonnet'),
+      permissionMode: z
+        .enum(['default', 'acceptEdits', 'bypassPermissions'])
+        .default('acceptEdits'),
+      allowedTools: z
+        .array(z.string())
+        .default(['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep']),
+      maxTurns: z.number().int().positive().default(50),
+    })
+    .default({}),
+});
+
 export const OphanConfigSchema = z.object({
+  // Execution backend configuration
+  execution: ExecutionConfigSchema.default({}),
+
+  // Model settings (used by API backend)
   model: z
     .object({
       name: z.string().default('claude-sonnet-4-20250514'),

@@ -44,6 +44,9 @@ ophan review
 
 # View recent task logs
 ophan logs
+
+# Open web UI
+ophan ui
 ```
 
 ## Project Structure
@@ -128,6 +131,7 @@ escalations:
 | `ophan review` | Run outer loop (pattern detection) |
 | `ophan status` | Show metrics and status |
 | `ophan logs` | View recent task logs |
+| `ophan ui` | Open web UI for configuration and monitoring |
 | `ophan approve <id>` | Approve a criteria change proposal |
 
 ### Command Options
@@ -151,6 +155,33 @@ escalations:
 - `-l, --limit <number>` — Number of logs to show (default: 10)
 - `-p, --project <path>` — Path to the project directory
 - `--json` — Output as JSON
+
+**`ophan ui`**
+- `-p, --port <number>` — Port to run the server on (default: 4040)
+- `--no-open` — Do not open browser automatically
+- `--project <path>` — Path to the project directory
+
+## Web UI
+
+Ophan includes a lightweight web dashboard for viewing status and editing configuration.
+
+```bash
+# Start the UI (opens browser automatically)
+ophan ui
+
+# Start on a different port
+ophan ui --port 8080
+
+# Start without opening browser
+ophan ui --no-open
+```
+
+The UI provides:
+- **Dashboard**: View task metrics, success rates, and costs
+- **Task Logs**: Browse and search task execution history
+- **Configuration**: Edit settings with form-based interface
+- **Guidelines/Criteria**: View current guidelines and criteria files
+- **Digests**: Read outer loop review reports
 
 ## Escalations & Webhooks
 
@@ -266,8 +297,9 @@ For detailed documentation, see:
 - **Phase 1C: Outer Loop** — Pattern detection, learning consolidation, proposals
 - **Phase 1D: Escalations** — Webhook notifications
 - **Phase 1E: Polish** — Testing, documentation
+- **Phase 1F: Web UI** — Dashboard, config editor, log viewer
 
-**Test Coverage:** 77 tests passing
+**Test Coverage:** 87 tests passing
 
 ## License
 

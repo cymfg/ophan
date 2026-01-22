@@ -7,7 +7,18 @@
 // ============================================================================
 
 export interface OphanConfig {
-  /** Model configuration */
+  /** Execution backend configuration */
+  execution?: {
+    backend: 'api' | 'claude-code';
+    claudeCode?: {
+      model: 'sonnet' | 'opus' | 'haiku';
+      permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions';
+      allowedTools: string[];
+      maxTurns: number;
+    };
+  };
+
+  /** Model configuration (used by API backend) */
   model: {
     name: string;
     maxTokens: number;

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ophan Dashboard</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+      <div class="logo">
+        <h1>Ophan</h1>
+        <span class="tagline">Two-Loop Agent</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#" data-page="dashboard" class="active">Dashboard</a></li>
+        <li><a href="#" data-page="run-task">Run Task</a></li>
+        <li><a href="#" data-page="logs">Task Logs</a></li>
+        <li><a href="#" data-page="config">Configuration</a></li>
+        <li><a href="#" data-page="guidelines">Guidelines</a></li>
+        <li><a href="#" data-page="digests">Digests</a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">Connecting...</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="content">
+      <!-- Run Task Page -->
+      <section id="page-run-task" class="page">
+        <header class="page-header">
+          <h2>Run Task</h2>
+        </header>
+
+        <div class="card">
+          <div class="task-runner" id="taskRunner">
+            <div class="task-input-section" id="taskInputSection">
+              <div class="form-group">
+                <label for="taskDescription">Task Description</label>
+                <textarea id="taskDescription" rows="4" placeholder="Describe the task you want Ophan to perform..."></textarea>
+              </div>
+              <button class="btn btn-primary" id="runTaskBtn">Run Task</button>
+            </div>
+
+            <div class="task-running-section" id="taskRunningSection" style="display: none;">
+              <div class="task-status-header">
+                <div class="task-status-indicator">
+                  <span class="spinner"></span>
+                  <span id="taskStatusText">Starting task...</span>
+                </div>
+                <button class="btn btn-danger" id="cancelTaskBtn">Cancel</button>
+              </div>
+
+              <div class="task-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text">
+                  <span id="iterationCount">Iteration 0</span>
+                  <span id="maxIterations">/ 5</span>
+                </div>
+              </div>
+
+              <div class="task-details">
+                <div class="summary-item">
+                  <span class="summary-label">Task</span>
+                  <span class="summary-value" id="runningTaskDesc">-</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Status</span>
+                  <span class="summary-value" id="runningTaskStatus">Starting...</span>
+                </div>
+              </div>
+
+              <div class="task-log" id="taskLog">
+                <h4>Progress Log</h4>
+                <div class="log-entries" id="logEntries"></div>
+              </div>
+            </div>
+
+            <div class="task-result-section" id="taskResultSection" style="display: none;">
+              <div class="task-result" id="taskResult">
+                <div class="result-header">
+                  <span class="result-icon" id="resultIcon"></span>
+                  <h3 id="resultTitle">Task Complete</h3>
+                </div>
+                <div class="result-details">
+                  <div class="summary-item">
+                    <span class="summary-label">Status</span>
+                    <span class="summary-value" id="finalStatus">-</span>
+                  </div>
+                  <div class="summary-item">
+                    <span class="summary-label">Iterations</span>
+                    <span class="summary-value" id="finalIterations">-</span>
+                  </div>
+                  <div class="summary-item">
+                    <span class="summary-label">Cost</span>
+                    <span class="summary-value" id="finalCost">-</span>
+                  </div>
+                </div>
+                <div class="result-actions">
+                  <button class="btn btn-primary" id="newTaskBtn">Run Another Task</button>
+                  <button class="btn btn-secondary" id="viewLogsBtn">View in Logs</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dashboard Page -->
+      <section id="page-dashboard" class="page active">
+        <header class="page-header">
+          <h2>Dashboard</h2>
+          <span class="project-name" id="projectName">Loading...</span>
+        </header>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value" id="totalTasks">-</div>
+            <div class="metric-label">Total Tasks</div>
+          </div>
+          <div class="metric-card success">
+            <div class="metric-value" id="successRate">-</div>
+            <div class="metric-label">Success Rate</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="avgIterations">-</div>
+            <div class="metric-label">Avg Iterations</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="totalCost">-</div>
+            <div class="metric-label">Total Cost</div>
+          </div>
+        </div>
+
+        <div class="cards-row">
+          <div class="card">
+            <h3>Task Summary</h3>
+            <div class="task-summary">
+              <div class="summary-item">
+                <span class="summary-label">Successful</span>
+                <span class="summary-value success" id="successfulTasks">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Failed</span>
+                <span class="summary-value danger" id="failedTasks">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Escalated</span>
+                <span class="summary-value warning" id="escalatedTasks">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Outer Loop Status</h3>
+            <div class="outer-loop-status">
+              <div class="summary-item">
+                <span class="summary-label">Last Review</span>
+                <span class="summary-value" id="lastReview">Never</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Tasks Since Review</span>
+                <span class="summary-value" id="tasksSinceReview">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Pending Proposals</span>
+                <span class="summary-value" id="pendingProposals">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Active Learnings</span>
+                <span class="summary-value" id="activeLearnings">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Current Configuration</h3>
+          <div class="config-preview">
+            <div class="config-section">
+              <h4>Execution</h4>
+              <div class="config-items">
+                <div class="config-item">
+                  <span class="config-key">Backend</span>
+                  <span class="config-value" id="executionBackend">-</span>
+                </div>
+                <div class="config-item">
+                  <span class="config-key">Model</span>
+                  <span class="config-value" id="modelName">-</span>
+                </div>
+                <div class="config-item">
+                  <span class="config-key">Max Tokens</span>
+                  <span class="config-value" id="maxTokens">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="config-section">
+              <h4>Inner Loop</h4>
+              <div class="config-items">
+                <div class="config-item">
+                  <span class="config-key">Max Iterations</span>
+                  <span class="config-value" id="maxIterations">-</span>
+                </div>
+                <div class="config-item">
+                  <span class="config-key">Strategy</span>
+                  <span class="config-value" id="strategy">-</span>
+                </div>
+                <div class="config-item">
+                  <span class="config-key">Cost Limit</span>
+                  <span class="config-value" id="costLimit">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Logs Page -->
+      <section id="page-logs" class="page">
+        <header class="page-header">
+          <h2>Task Logs</h2>
+          <button class="btn btn-secondary" id="refreshLogs">Refresh</button>
+        </header>
+
+        <div class="card">
+          <table class="logs-table">
+            <thead>
+              <tr>
+                <th>Task ID</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Iterations</th>
+                <th>Cost</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <tr>
+                <td colspan="6" class="loading">Loading logs...</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination" id="logsPagination"></div>
+        </div>
+
+        <!-- Log Detail Modal -->
+        <div class="modal" id="logDetailModal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Task Details</h3>
+              <button class="modal-close" id="closeLogDetail">&times;</button>
+            </div>
+            <div class="modal-body" id="logDetailContent"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Config Page -->
+      <section id="page-config" class="page">
+        <header class="page-header">
+          <h2>Configuration</h2>
+          <button class="btn btn-primary" id="saveConfig">Save Changes</button>
+        </header>
+
+        <div class="card">
+          <form id="configForm">
+            <div class="form-section">
+              <h3>Execution Backend</h3>
+              <div class="form-group">
+                <label for="configBackend">Backend</label>
+                <select id="configBackend" name="execution.backend">
+                  <option value="api">API - Direct Claude API (requires ANTHROPIC_API_KEY)</option>
+                  <option value="claude-code">Claude Code - Use Claude subscription</option>
+                </select>
+                <span class="form-hint">Choose how Ophan executes tasks</span>
+              </div>
+              <div id="claudeCodeSettings" style="display: none;">
+                <div class="form-group">
+                  <label for="configClaudeCodeModel">Claude Code Model</label>
+                  <select id="configClaudeCodeModel" name="execution.claudeCode.model">
+                    <option value="sonnet">Sonnet (Recommended)</option>
+                    <option value="opus">Opus</option>
+                    <option value="haiku">Haiku</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="configPermissionMode">Permission Mode</label>
+                  <select id="configPermissionMode" name="execution.claudeCode.permissionMode">
+                    <option value="acceptEdits">Accept Edits - Auto-approve file edits</option>
+                    <option value="bypassPermissions">Bypass Permissions - Full automation</option>
+                    <option value="default">Default - Require approval for each action</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section" id="apiModelSettings">
+              <h3>API Model Settings</h3>
+              <div class="form-group">
+                <label for="configModelName">Model Name</label>
+                <select id="configModelName" name="model.name">
+                  <option value="claude-sonnet-4-20250514">claude-sonnet-4-20250514</option>
+                  <option value="claude-opus-4-20250514">claude-opus-4-20250514</option>
+                  <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="configMaxTokens">Max Tokens</label>
+                <input type="number" id="configMaxTokens" name="model.maxTokens" min="1024" max="8192">
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>Inner Loop Settings</h3>
+              <div class="form-group">
+                <label for="configMaxIterations">Max Iterations</label>
+                <input type="number" id="configMaxIterations" name="innerLoop.maxIterations" min="1" max="20">
+              </div>
+              <div class="form-group">
+                <label for="configStrategy">Regeneration Strategy</label>
+                <select id="configStrategy" name="innerLoop.regenerationStrategy">
+                  <option value="full">full - Regenerate from scratch</option>
+                  <option value="informed">informed - Keep structure, fix problems</option>
+                  <option value="incremental">incremental - Minimal edits only</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="configCostLimit">Cost Limit ($)</label>
+                <input type="number" id="configCostLimit" name="innerLoop.costLimit" min="0" step="0.01">
+                <span class="form-hint">Leave empty for no limit</span>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>Outer Loop Settings</h3>
+              <div class="form-group">
+                <label for="configAfterTasks">Trigger After Tasks</label>
+                <input type="number" id="configAfterTasks" name="outerLoop.triggers.afterTasks" min="1">
+              </div>
+              <div class="form-group">
+                <label for="configMinOccurrences">Min Pattern Occurrences</label>
+                <input type="number" id="configMinOccurrences" name="outerLoop.minOccurrences" min="1">
+              </div>
+              <div class="form-group">
+                <label for="configMinConfidence">Min Confidence (%)</label>
+                <input type="number" id="configMinConfidence" name="outerLoop.minConfidence" min="0" max="100">
+              </div>
+              <div class="form-group">
+                <label for="configLookbackDays">Lookback Days</label>
+                <input type="number" id="configLookbackDays" name="outerLoop.lookbackDays" min="1">
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Guidelines Page -->
+      <section id="page-guidelines" class="page">
+        <header class="page-header">
+          <h2>Guidelines & Criteria</h2>
+        </header>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="guidelines">Guidelines</button>
+          <button class="tab" data-tab="criteria">Criteria</button>
+        </div>
+
+        <div class="card" id="guidelinesContent">
+          <div class="loading">Loading guidelines...</div>
+        </div>
+      </section>
+
+      <!-- Digests Page -->
+      <section id="page-digests" class="page">
+        <header class="page-header">
+          <h2>Review Digests</h2>
+        </header>
+
+        <div class="card">
+          <div class="digests-list" id="digestsList">
+            <div class="loading">Loading digests...</div>
+          </div>
+        </div>
+
+        <div class="card" id="digestContent" style="display: none;">
+          <div class="digest-viewer">
+            <pre id="digestText"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ import type {
   EscalationPayload,
 } from '../types/index.js';
 import { ClaudeClient, OPHAN_TOOLS } from '../llm/claude.js';
+import { ClaudeCodeExecutor } from '../llm/claude-code-executor.js';
 import {
   buildSystemPrompt,
   buildTaskMessage,
@@ -44,14 +45,33 @@ export interface InnerLoopResult {
  */
 export class InnerLoop {
   private claude: ClaudeClient;
+  private claudeCodeExecutor: ClaudeCodeExecutor | null = null;
   private toolRunner: ToolRunner;
   private evaluator: EvaluationEngine;
   private webhookClient: WebhookClient;
   private options: InnerLoopOptions;
+  private useClaudeCode: boolean;
 
   constructor(options: InnerLoopOptions) {
     this.options = options;
+    this.useClaudeCode = options.config.execution?.backend === 'claude-code';
+
+    // Initialize Claude API client (used for learning extraction even with Claude Code backend)
     this.claude = new ClaudeClient(options.config);
+
+    // Initialize Claude Code executor if using that backend
+    if (this.useClaudeCode) {
+      this.claudeCodeExecutor = new ClaudeCodeExecutor({
+        projectRoot: options.projectRoot,
+        config: options.config,
+        onProgress: options.onProgress,
+        onToolUse: (tool, result) => {
+          // Track tool outputs for evaluation
+          this.toolRunner.recordToolOutput(tool, { success: true, output: result });
+        },
+      });
+    }
+
     this.toolRunner = new ToolRunner({
       projectRoot: options.projectRoot,
       config: options.config,
@@ -129,9 +149,11 @@ export class InnerLoop {
               iteration
             );
 
-      // Execute agent loop with tools
+      // Execute agent loop with tools (using appropriate backend)
       const { output, inputTokens, outputTokens, completed } =
-        await this.executeAgentLoop(systemPrompt, userMessage);
+        this.useClaudeCode && this.claudeCodeExecutor
+          ? await this.executeWithClaudeCode(systemPrompt, userMessage)
+          : await this.executeAgentLoop(systemPrompt, userMessage);
 
       totalInputTokens += inputTokens;
       totalOutputTokens += outputTokens;
@@ -231,7 +253,33 @@ export class InnerLoop {
   }
 
   /**
-   * Execute the agent loop with tool use
+   * Execute using Claude Code backend (subscription-based)
+   */
+  private async executeWithClaudeCode(
+    systemPrompt: string,
+    taskMessage: string
+  ): Promise<{
+    output: string;
+    inputTokens: number;
+    outputTokens: number;
+    completed: boolean;
+  }> {
+    if (!this.claudeCodeExecutor) {
+      throw new Error('Claude Code executor not initialized');
+    }
+
+    const result = await this.claudeCodeExecutor.execute(systemPrompt, taskMessage);
+
+    return {
+      output: result.output,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      completed: result.completed,
+    };
+  }
+
+  /**
+   * Execute the agent loop with tool use (API backend)
    */
   private async executeAgentLoop(
     systemPrompt: string,

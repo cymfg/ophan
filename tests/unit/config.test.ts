@@ -53,6 +53,69 @@ describe('OphanConfigSchema', () => {
     expect(DEFAULT_CONFIG.outerLoop.triggers.afterTasks).toBe(10);
     expect(DEFAULT_CONFIG.guardrails.protectedPaths).toContain('.ophan/criteria/**');
   });
+
+  it('should default to api backend', () => {
+    const result = OphanConfigSchema.parse({});
+    expect(result.execution.backend).toBe('api');
+  });
+
+  it('should parse claude-code backend configuration', () => {
+    const config = {
+      execution: {
+        backend: 'claude-code' as const,
+        claudeCode: {
+          model: 'opus' as const,
+          permissionMode: 'bypassPermissions' as const,
+          allowedTools: ['Read', 'Write', 'Bash'],
+          maxTurns: 100,
+        },
+      },
+    };
+
+    const result = OphanConfigSchema.parse(config);
+    expect(result.execution.backend).toBe('claude-code');
+    expect(result.execution.claudeCode.model).toBe('opus');
+    expect(result.execution.claudeCode.permissionMode).toBe('bypassPermissions');
+    expect(result.execution.claudeCode.allowedTools).toEqual(['Read', 'Write', 'Bash']);
+    expect(result.execution.claudeCode.maxTurns).toBe(100);
+  });
+
+  it('should have sensible claude-code defaults', () => {
+    const config = {
+      execution: {
+        backend: 'claude-code' as const,
+      },
+    };
+
+    const result = OphanConfigSchema.parse(config);
+    expect(result.execution.claudeCode.model).toBe('sonnet');
+    expect(result.execution.claudeCode.permissionMode).toBe('acceptEdits');
+    expect(result.execution.claudeCode.allowedTools).toContain('Read');
+    expect(result.execution.claudeCode.maxTurns).toBe(50);
+  });
+
+  it('should reject invalid backend', () => {
+    const config = {
+      execution: {
+        backend: 'invalid',
+      },
+    };
+
+    expect(() => OphanConfigSchema.parse(config)).toThrow();
+  });
+
+  it('should reject invalid permission mode', () => {
+    const config = {
+      execution: {
+        backend: 'claude-code' as const,
+        claudeCode: {
+          permissionMode: 'invalid',
+        },
+      },
+    };
+
+    expect(() => OphanConfigSchema.parse(config)).toThrow();
+  });
 });
 
 describe('OphanStateSchema', () => {

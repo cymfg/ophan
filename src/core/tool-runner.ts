@@ -103,6 +103,15 @@ export class ToolRunner {
   }
 
   /**
+   * Record a tool output (used when tools are executed externally, e.g., by Claude Code)
+   */
+  recordToolOutput(toolName: string, result: ToolResult): void {
+    this.toolOutputs.push(
+      `[${toolName}] ${result.success ? 'SUCCESS' : 'FAILED'}\n${result.output}${result.error ? `\nError: ${result.error}` : ''}`
+    );
+  }
+
+  /**
    * Run a shell command
    */
   private async runCommand(
