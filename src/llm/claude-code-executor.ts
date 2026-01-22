@@ -6,7 +6,24 @@
  */
 
 import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { execSync } from 'child_process';
 import type { OphanConfig } from '../types/index.js';
+
+/**
+ * Find the Claude Code executable path
+ */
+function findClaudeCodeExecutable(): string | undefined {
+  try {
+    // Try to find 'claude' in PATH using 'which' (Unix) or 'where' (Windows)
+    const command = process.platform === 'win32' ? 'where claude' : 'which claude';
+    const result = execSync(command, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const path = result.trim().split('\n')[0]; // Take first result if multiple
+    return path || undefined;
+  } catch {
+    // claude not found in PATH
+    return undefined;
+  }
+}
 
 export interface ClaudeCodeExecutorOptions {
   projectRoot: string;
@@ -68,7 +85,17 @@ export class ClaudeCodeExecutor {
       // Build the full prompt with system context
       const fullPrompt = `${systemPrompt}\n\n---\n\nTask:\n${taskPrompt}`;
 
+      // Find Claude Code executable
+      const claudeExecutable = findClaudeCodeExecutable();
+      if (!claudeExecutable) {
+        throw new Error(
+          'Claude Code executable not found. Please ensure Claude Code is installed and available in your PATH. ' +
+          'Install it via: npm install -g @anthropic-ai/claude-code'
+        );
+      }
+
       const queryOptions = {
+        pathToClaudeCodeExecutable: claudeExecutable,
         allowedTools: claudeCodeConfig.allowedTools,
         permissionMode: claudeCodeConfig.permissionMode,
         model: mapModelName(claudeCodeConfig.model),
@@ -77,7 +104,7 @@ export class ClaudeCodeExecutor {
         maxBudgetUsd: this.options.config.innerLoop.costLimit,
       };
 
-      this.log('Starting Claude Code execution...');
+      this.log(`Starting Claude Code execution (using ${claudeExecutable})...`);
 
       for await (const message of query({
         prompt: fullPrompt,

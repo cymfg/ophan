@@ -307,15 +307,15 @@ export function createUIServer(options: UIServerOptions): UIServer {
         return;
       }
 
-      // Check for API key
-      if (!process.env.ANTHROPIC_API_KEY) {
+      const config = loadConfig(projectRoot);
+
+      // Check for API key only when using the API backend
+      if (config.execution.backend === 'api' && !process.env.ANTHROPIC_API_KEY) {
         res.status(400).json({
           error: 'ANTHROPIC_API_KEY environment variable is not set',
         });
         return;
       }
-
-      const config = loadConfig(projectRoot);
       const projectName = path.basename(projectRoot);
 
       // Load guidelines, criteria, learnings
