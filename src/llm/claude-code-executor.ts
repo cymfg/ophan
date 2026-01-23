@@ -203,7 +203,7 @@ export class ClaudeCodeExecutor {
 
         // Check for result message
         if (message.type === 'result') {
-          const result = message as {
+          const result = message as unknown as {
             type: 'result';
             subtype: string;
             is_error: boolean;
