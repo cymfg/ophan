@@ -19,6 +19,8 @@
         <li><a href="#" data-page="dashboard" class="active">Dashboard</a></li>
         <li><a href="#" data-page="run-task">Run Task</a></li>
         <li><a href="#" data-page="logs">Task Logs</a></li>
+        <li><a href="#" data-page="proposals">Proposals</a></li>
+        <li><a href="#" data-page="context-stats">Context Stats</a></li>
         <li><a href="#" data-page="config">Configuration</a></li>
         <li><a href="#" data-page="guidelines">Guidelines</a></li>
         <li><a href="#" data-page="digests">Digests</a></li>
@@ -180,6 +182,50 @@
                 <span class="summary-value" id="activeLearnings">-</span>
               </div>
             </div>
+            <div class="card-actions">
+              <button class="btn btn-secondary" id="runReviewBtn">Run Review</button>
+              <span class="review-status" id="reviewStatus"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Agent Metrics</h3>
+          <div class="agent-metrics-grid" id="agentMetricsGrid">
+            <div class="agent-card">
+              <h4>Task Agent</h4>
+              <div class="agent-metrics" id="taskAgentMetrics">
+                <div class="metric-item">
+                  <span class="metric-name">Success Rate</span>
+                  <span class="metric-value" id="taskAgentSuccessRate">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Avg Iterations</span>
+                  <span class="metric-value" id="taskAgentAvgIterations">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Avg Cost/Task</span>
+                  <span class="metric-value" id="taskAgentAvgCost">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="agent-card">
+              <h4>Context Agent</h4>
+              <div class="agent-metrics" id="contextAgentMetrics">
+                <div class="metric-item">
+                  <span class="metric-name">Hit Rate</span>
+                  <span class="metric-value" id="contextAgentHitRate">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Miss Rate</span>
+                  <span class="metric-value" id="contextAgentMissRate">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Tasks Analyzed</span>
+                  <span class="metric-value" id="contextAgentTasksAnalyzed">-</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -256,6 +302,107 @@
               <button class="modal-close" id="closeLogDetail">&times;</button>
             </div>
             <div class="modal-body" id="logDetailContent"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Proposals Page -->
+      <section id="page-proposals" class="page">
+        <header class="page-header">
+          <h2>Pending Proposals</h2>
+          <button class="btn btn-secondary" id="refreshProposals">Refresh</button>
+        </header>
+
+        <div class="card">
+          <div class="proposals-list" id="proposalsList">
+            <div class="loading">Loading proposals...</div>
+          </div>
+        </div>
+
+        <!-- Proposal Detail Modal -->
+        <div class="modal" id="proposalDetailModal">
+          <div class="modal-content modal-large">
+            <div class="modal-header">
+              <h3>Review Proposal</h3>
+              <button class="modal-close" id="closeProposalDetail">&times;</button>
+            </div>
+            <div class="modal-body" id="proposalDetailContent"></div>
+            <div class="modal-footer">
+              <div class="form-group">
+                <label for="proposalFeedback">Feedback (optional)</label>
+                <textarea id="proposalFeedback" rows="2" placeholder="Add feedback for this proposal..."></textarea>
+              </div>
+              <div class="modal-actions">
+                <button class="btn btn-danger" id="rejectProposalBtn">Reject</button>
+                <button class="btn btn-success" id="approveProposalBtn">Approve</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Context Stats Page -->
+      <section id="page-context-stats" class="page">
+        <header class="page-header">
+          <h2>Context Statistics</h2>
+          <div class="header-actions">
+            <select id="contextLookback" class="form-select">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <button class="btn btn-secondary" id="refreshContextStats">Refresh</button>
+          </div>
+        </header>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value" id="contextTasksAnalyzed">-</div>
+            <div class="metric-label">Tasks Analyzed</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="contextHitRate">-</div>
+            <div class="metric-label">Hit Rate</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="contextMissRate">-</div>
+            <div class="metric-label">Miss Rate</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="contextExplorationTokens">-</div>
+            <div class="metric-label">Avg Exploration Tokens</div>
+          </div>
+        </div>
+
+        <div class="cards-row">
+          <div class="card">
+            <h3>Commonly Missed Files</h3>
+            <p class="card-description">Files that were needed but not provided in context</p>
+            <div class="file-list" id="commonMissesList">
+              <div class="loading">Loading...</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Commonly Unused Files</h3>
+            <p class="card-description">Files that were provided but never used</p>
+            <div class="file-list" id="commonUnusedList">
+              <div class="loading">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Performance Assessment</h3>
+          <div class="assessment-grid" id="contextAssessment">
+            <div class="assessment-item" id="hitRateAssessment">
+              <span class="assessment-icon">-</span>
+              <span class="assessment-text">Hit rate assessment loading...</span>
+            </div>
+            <div class="assessment-item" id="missRateAssessment">
+              <span class="assessment-icon">-</span>
+              <span class="assessment-text">Miss rate assessment loading...</span>
+            </div>
           </div>
         </div>
       </section>
