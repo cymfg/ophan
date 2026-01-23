@@ -13,9 +13,11 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import { loadConfig, saveConfig, loadState, saveState } from '../cli/utils/config.js';
 import type { OphanStateOutput } from '../types/state.js';
-import type { Task, Evaluation, EscalationPayload } from '../types/index.js';
+import type { Task, Evaluation, EscalationPayload, Proposal } from '../types/index.js';
 import { InnerLoop } from '../core/inner-loop.js';
 import { TaskLogger } from '../core/task-logger.js';
+import { ContextLogger } from '../core/context-logger.js';
+import { OuterLoop } from '../core/outer-loop.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -262,6 +264,203 @@ export function createUIServer(options: UIServerOptions): UIServer {
     try {
       const state = loadState(projectRoot);
       res.json(state.learnings ?? []);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/context-stats - Get context usage statistics
+   */
+  app.get('/api/context-stats', async (req: Request, res: Response) => {
+    try {
+      const lookbackDays = parseInt(req.query.days as string) || 30;
+      const contextLogger = new ContextLogger({ ophanDir });
+      const metrics = await contextLogger.getAggregateMetrics(lookbackDays);
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/proposals - Get pending proposals
+   */
+  app.get('/api/proposals', async (_req: Request, res: Response) => {
+    try {
+      const state = loadState(projectRoot);
+      res.json(state.pendingProposals ?? []);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * POST /api/proposals/:id/approve - Approve a proposal
+   */
+  app.post('/api/proposals/:id/approve', async (req: Request, res: Response) => {
+    try {
+      const proposalId = req.params.id;
+      const { feedback } = req.body || {};
+      const state = loadState(projectRoot);
+
+      const proposal = state.pendingProposals?.find((p: Proposal) => p.id === proposalId);
+      if (!proposal) {
+        res.status(404).json({ error: 'Proposal not found' });
+        return;
+      }
+
+      // Apply the proposal change
+      const targetPath = path.join(ophanDir, proposal.targetFile);
+      try {
+        let existingContent = '';
+        try {
+          existingContent = await fs.readFile(targetPath, 'utf-8');
+        } catch {
+          // File doesn't exist yet
+        }
+
+        // Handle APPEND directive
+        let newContent = proposal.change;
+        if (proposal.change.startsWith('APPEND:')) {
+          newContent = existingContent + '\n' + proposal.change.replace('APPEND:', '').trim();
+        }
+
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, newContent, 'utf-8');
+      } catch (error) {
+        res.status(500).json({ error: `Failed to apply change: ${String(error)}` });
+        return;
+      }
+
+      // Update proposal status
+      proposal.status = 'approved';
+      proposal.reviewedAt = new Date().toISOString();
+      if (feedback) {
+        proposal.humanFeedback = feedback;
+      }
+
+      // Remove from pending
+      state.pendingProposals = state.pendingProposals?.filter((p: Proposal) => p.id !== proposalId) ?? [];
+      saveState(projectRoot, state);
+
+      broadcast('proposal:approved', { proposal });
+      res.json({ success: true, proposal });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * POST /api/proposals/:id/reject - Reject a proposal
+   */
+  app.post('/api/proposals/:id/reject', async (req: Request, res: Response) => {
+    try {
+      const proposalId = req.params.id;
+      const { feedback } = req.body || {};
+      const state = loadState(projectRoot);
+
+      const proposal = state.pendingProposals?.find((p: Proposal) => p.id === proposalId);
+      if (!proposal) {
+        res.status(404).json({ error: 'Proposal not found' });
+        return;
+      }
+
+      // Update proposal status
+      proposal.status = 'rejected';
+      proposal.reviewedAt = new Date().toISOString();
+      if (feedback) {
+        proposal.humanFeedback = feedback;
+      }
+
+      // Remove from pending
+      state.pendingProposals = state.pendingProposals?.filter((p: Proposal) => p.id !== proposalId) ?? [];
+      saveState(projectRoot, state);
+
+      broadcast('proposal:rejected', { proposal });
+      res.json({ success: true, proposal });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // Track running review
+  let runningReview: {
+    startedAt: string;
+    status: 'running' | 'completed' | 'failed';
+  } | null = null;
+
+  /**
+   * GET /api/review/status - Get current review status
+   */
+  app.get('/api/review/status', (_req: Request, res: Response) => {
+    if (runningReview) {
+      res.json({ running: runningReview.status === 'running', ...runningReview });
+    } else {
+      res.json({ running: false });
+    }
+  });
+
+  /**
+   * POST /api/review - Trigger outer loop review
+   */
+  app.post('/api/review', async (_req: Request, res: Response) => {
+    try {
+      if (runningReview?.status === 'running') {
+        res.status(409).json({ error: 'A review is already running' });
+        return;
+      }
+
+      const config = loadConfig(projectRoot);
+      const state = loadState(projectRoot);
+      const projectName = path.basename(projectRoot);
+
+      runningReview = {
+        startedAt: new Date().toISOString(),
+        status: 'running',
+      };
+
+      broadcast('review:started', { startedAt: runningReview.startedAt });
+
+      // Return immediately, review runs in background
+      res.json({ success: true, message: 'Review started' });
+
+      // Run review in background
+      try {
+        const outerLoop = new OuterLoop({
+          projectRoot,
+          projectName,
+          ophanDir,
+          config,
+          state,
+          onProgress: (message: string) => {
+            broadcast('review:progress', { message });
+          },
+        });
+
+        const result = await outerLoop.execute({ autoApplyGuidelines: false });
+
+        // Update state with new proposals
+        const updatedState = loadState(projectRoot);
+        updatedState.pendingProposals = [
+          ...(updatedState.pendingProposals ?? []),
+          ...result.proposalsGenerated,
+        ];
+        updatedState.lastReview = new Date().toISOString();
+        updatedState.tasksSinceReview = 0;
+        saveState(projectRoot, updatedState);
+
+        runningReview.status = 'completed';
+        broadcast('review:completed', {
+          patternsDetected: result.patternsDetected.length,
+          proposalsGenerated: result.proposalsGenerated.length,
+          guidelinesUpdated: result.guidelinesUpdated,
+          digestPath: result.digestPath,
+        });
+      } catch (error) {
+        runningReview.status = 'failed';
+        broadcast('review:error', { error: String(error) });
+      }
     } catch (error) {
       res.status(500).json({ error: String(error) });
     }

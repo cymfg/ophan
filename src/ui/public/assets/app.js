@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initLogModal();
   initTabs();
   initTaskRunner();
+  initProposals();
+  initContextStats();
+  initReviewButton();
 });
 
 // Navigation
@@ -57,6 +60,12 @@ function navigateTo(page) {
     case 'logs':
       logsOffset = 0;
       loadLogs();
+      break;
+    case 'proposals':
+      loadProposals();
+      break;
+    case 'context-stats':
+      loadContextStats();
       break;
     case 'config':
       loadConfig();
@@ -137,6 +146,27 @@ function handleWebSocketEvent(eventType, data) {
     case 'task:error':
       handleTaskError(data);
       break;
+    case 'review:started':
+      handleReviewStarted(data);
+      break;
+    case 'review:progress':
+      handleReviewProgress(data);
+      break;
+    case 'review:completed':
+      handleReviewCompleted(data);
+      break;
+    case 'review:error':
+      handleReviewError(data);
+      break;
+    case 'proposal:approved':
+    case 'proposal:rejected':
+      if (currentPage === 'proposals') {
+        loadProposals();
+      }
+      if (currentPage === 'dashboard') {
+        loadDashboard();
+      }
+      break;
   }
 }
 
@@ -179,6 +209,14 @@ async function loadDashboard() {
     document.getElementById('costLimit').textContent = data.config.innerLoop.costLimit
       ? `$${data.config.innerLoop.costLimit}`
       : 'None';
+
+    // Task agent metrics (from status metrics)
+    document.getElementById('taskAgentSuccessRate').textContent = data.metrics.successRate + '%';
+    document.getElementById('taskAgentAvgIterations').textContent = data.metrics.averageIterations;
+    document.getElementById('taskAgentAvgCost').textContent = '$' + data.metrics.averageCostPerTask;
+
+    // Load context agent metrics
+    loadDashboardAgentMetrics();
 
   } catch (error) {
     console.error('Failed to load dashboard:', error);
@@ -713,6 +751,350 @@ function handleTaskError(data) {
   if (currentPage === 'run-task') {
     addLogEntry(`Error: ${data.error || 'Unknown error'}`, 'error');
     showResultSection('failed', null, null);
+  }
+}
+
+// Proposals
+let currentProposalId = null;
+
+function initProposals() {
+  document.getElementById('refreshProposals').addEventListener('click', loadProposals);
+  document.getElementById('closeProposalDetail').addEventListener('click', closeProposalModal);
+  document.getElementById('approveProposalBtn').addEventListener('click', approveCurrentProposal);
+  document.getElementById('rejectProposalBtn').addEventListener('click', rejectCurrentProposal);
+
+  document.getElementById('proposalDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'proposalDetailModal') {
+      closeProposalModal();
+    }
+  });
+}
+
+async function loadProposals() {
+  const list = document.getElementById('proposalsList');
+  list.innerHTML = '<div class="loading">Loading proposals...</div>';
+
+  try {
+    const response = await fetch('/api/proposals');
+    const proposals = await response.json();
+
+    if (proposals.length === 0) {
+      list.innerHTML = '<div class="empty-state">No pending proposals. Run a review to generate proposals.</div>';
+      return;
+    }
+
+    list.innerHTML = proposals.map(p => `
+      <div class="proposal-item" data-id="${p.id}">
+        <div class="proposal-header">
+          <span class="proposal-type ${p.type}">${p.type}</span>
+          <span class="proposal-source">${p.source}</span>
+          <span class="proposal-confidence">${Math.round(p.confidence * 100)}% confidence</span>
+        </div>
+        <div class="proposal-target">${p.targetFile}</div>
+        <div class="proposal-reason">${escapeHtml(p.reason)}</div>
+        <div class="proposal-actions">
+          <button class="btn btn-sm btn-primary" onclick="showProposalDetail('${p.id}')">Review</button>
+        </div>
+      </div>
+    `).join('');
+
+  } catch (error) {
+    console.error('Failed to load proposals:', error);
+    list.innerHTML = '<div class="loading">Failed to load proposals</div>';
+  }
+}
+
+async function showProposalDetail(id) {
+  currentProposalId = id;
+  const modal = document.getElementById('proposalDetailModal');
+  const content = document.getElementById('proposalDetailContent');
+
+  content.innerHTML = '<div class="loading">Loading...</div>';
+  modal.classList.add('active');
+
+  try {
+    const response = await fetch('/api/proposals');
+    const proposals = await response.json();
+    const proposal = proposals.find(p => p.id === id);
+
+    if (!proposal) {
+      content.innerHTML = '<div class="loading">Proposal not found</div>';
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="proposal-detail">
+        <div class="proposal-meta">
+          <span class="proposal-type ${proposal.type}">${proposal.type}</span>
+          <span class="proposal-source">from ${proposal.source}</span>
+          <span class="proposal-confidence">${Math.round(proposal.confidence * 100)}% confidence</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Target File</span>
+          <span class="summary-value"><code>${proposal.targetFile}</code></span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Created</span>
+          <span class="summary-value">${new Date(proposal.createdAt).toLocaleString()}</span>
+        </div>
+        <div class="proposal-section">
+          <h4>Reason</h4>
+          <p>${escapeHtml(proposal.reason)}</p>
+        </div>
+        <div class="proposal-section">
+          <h4>Proposed Change</h4>
+          <pre class="proposal-change">${escapeHtml(proposal.change)}</pre>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('proposalFeedback').value = '';
+
+  } catch (error) {
+    content.innerHTML = '<div class="loading">Failed to load proposal details</div>';
+  }
+}
+
+function closeProposalModal() {
+  document.getElementById('proposalDetailModal').classList.remove('active');
+  currentProposalId = null;
+}
+
+async function approveCurrentProposal() {
+  if (!currentProposalId) return;
+
+  const feedback = document.getElementById('proposalFeedback').value.trim();
+  const btn = document.getElementById('approveProposalBtn');
+  btn.disabled = true;
+  btn.textContent = 'Approving...';
+
+  try {
+    const response = await fetch(`/api/proposals/${currentProposalId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feedback: feedback || undefined })
+    });
+
+    if (response.ok) {
+      closeProposalModal();
+      loadProposals();
+    } else {
+      const error = await response.json();
+      alert('Failed to approve: ' + error.error);
+    }
+  } catch (error) {
+    alert('Failed to approve proposal: ' + error.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Approve';
+  }
+}
+
+async function rejectCurrentProposal() {
+  if (!currentProposalId) return;
+
+  const feedback = document.getElementById('proposalFeedback').value.trim();
+  const btn = document.getElementById('rejectProposalBtn');
+  btn.disabled = true;
+  btn.textContent = 'Rejecting...';
+
+  try {
+    const response = await fetch(`/api/proposals/${currentProposalId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feedback: feedback || undefined })
+    });
+
+    if (response.ok) {
+      closeProposalModal();
+      loadProposals();
+    } else {
+      const error = await response.json();
+      alert('Failed to reject: ' + error.error);
+    }
+  } catch (error) {
+    alert('Failed to reject proposal: ' + error.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Reject';
+  }
+}
+
+// Context Stats
+function initContextStats() {
+  document.getElementById('refreshContextStats').addEventListener('click', loadContextStats);
+  document.getElementById('contextLookback').addEventListener('change', loadContextStats);
+}
+
+async function loadContextStats() {
+  const days = document.getElementById('contextLookback').value;
+
+  // Reset displays
+  document.getElementById('contextTasksAnalyzed').textContent = '-';
+  document.getElementById('contextHitRate').textContent = '-';
+  document.getElementById('contextMissRate').textContent = '-';
+  document.getElementById('contextExplorationTokens').textContent = '-';
+  document.getElementById('commonMissesList').innerHTML = '<div class="loading">Loading...</div>';
+  document.getElementById('commonUnusedList').innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const response = await fetch(`/api/context-stats?days=${days}`);
+    const metrics = await response.json();
+
+    // Update metrics cards
+    document.getElementById('contextTasksAnalyzed').textContent = metrics.tasksAnalyzed;
+    document.getElementById('contextHitRate').textContent = metrics.averageHitRate.toFixed(1) + '%';
+    document.getElementById('contextMissRate').textContent = metrics.averageMissRate.toFixed(1) + '%';
+    document.getElementById('contextExplorationTokens').textContent = Math.round(metrics.averageExplorationTokens).toLocaleString();
+
+    // Update common misses list
+    const missesList = document.getElementById('commonMissesList');
+    if (metrics.commonMisses.length === 0) {
+      missesList.innerHTML = '<div class="empty-state">No commonly missed files</div>';
+    } else {
+      missesList.innerHTML = metrics.commonMisses.map(m => `
+        <div class="file-item">
+          <code>${escapeHtml(m.file)}</code>
+          <span class="file-count">${m.count} tasks</span>
+        </div>
+      `).join('');
+    }
+
+    // Update common unused list
+    const unusedList = document.getElementById('commonUnusedList');
+    if (metrics.commonUnused.length === 0) {
+      unusedList.innerHTML = '<div class="empty-state">No commonly unused files</div>';
+    } else {
+      unusedList.innerHTML = metrics.commonUnused.map(m => `
+        <div class="file-item">
+          <code>${escapeHtml(m.file)}</code>
+          <span class="file-count">${m.count} tasks</span>
+        </div>
+      `).join('');
+    }
+
+    // Update assessment
+    const hitRateAssessment = document.getElementById('hitRateAssessment');
+    const missRateAssessment = document.getElementById('missRateAssessment');
+
+    if (metrics.averageHitRate >= 70) {
+      hitRateAssessment.innerHTML = '<span class="assessment-icon success">✓</span><span class="assessment-text">Hit rate meets target (>70%)</span>';
+    } else {
+      hitRateAssessment.innerHTML = '<span class="assessment-icon danger">✗</span><span class="assessment-text">Hit rate below target (>70%) - context includes irrelevant files</span>';
+    }
+
+    if (metrics.averageMissRate <= 20) {
+      missRateAssessment.innerHTML = '<span class="assessment-icon success">✓</span><span class="assessment-text">Miss rate meets target (<20%)</span>';
+    } else {
+      missRateAssessment.innerHTML = '<span class="assessment-icon danger">✗</span><span class="assessment-text">Miss rate above target (<20%) - context missing important files</span>';
+    }
+
+    // Also update dashboard agent metrics
+    updateContextAgentMetrics(metrics);
+
+  } catch (error) {
+    console.error('Failed to load context stats:', error);
+    document.getElementById('commonMissesList').innerHTML = '<div class="loading">Failed to load</div>';
+    document.getElementById('commonUnusedList').innerHTML = '<div class="loading">Failed to load</div>';
+  }
+}
+
+function updateContextAgentMetrics(metrics) {
+  document.getElementById('contextAgentHitRate').textContent = metrics.averageHitRate.toFixed(1) + '%';
+  document.getElementById('contextAgentMissRate').textContent = metrics.averageMissRate.toFixed(1) + '%';
+  document.getElementById('contextAgentTasksAnalyzed').textContent = metrics.tasksAnalyzed;
+}
+
+// Review Button
+let reviewRunning = false;
+
+function initReviewButton() {
+  document.getElementById('runReviewBtn').addEventListener('click', startReview);
+}
+
+async function startReview() {
+  if (reviewRunning) return;
+
+  const btn = document.getElementById('runReviewBtn');
+  const status = document.getElementById('reviewStatus');
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  status.textContent = 'Starting review...';
+  status.className = 'review-status running';
+  reviewRunning = true;
+
+  try {
+    const response = await fetch('/api/review', { method: 'POST' });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to start review');
+    }
+
+    status.textContent = 'Review in progress...';
+
+  } catch (error) {
+    status.textContent = 'Error: ' + error.message;
+    status.className = 'review-status error';
+    btn.disabled = false;
+    btn.textContent = 'Run Review';
+    reviewRunning = false;
+  }
+}
+
+function handleReviewStarted(data) {
+  const status = document.getElementById('reviewStatus');
+  status.textContent = 'Review started...';
+  status.className = 'review-status running';
+}
+
+function handleReviewProgress(data) {
+  const status = document.getElementById('reviewStatus');
+  status.textContent = data.message;
+}
+
+function handleReviewCompleted(data) {
+  const btn = document.getElementById('runReviewBtn');
+  const status = document.getElementById('reviewStatus');
+
+  btn.disabled = false;
+  btn.textContent = 'Run Review';
+  reviewRunning = false;
+
+  status.textContent = `Complete: ${data.proposalsGenerated} proposals generated`;
+  status.className = 'review-status success';
+
+  // Refresh dashboard data
+  if (currentPage === 'dashboard') {
+    loadDashboard();
+    loadContextStats();
+  }
+}
+
+function handleReviewError(data) {
+  const btn = document.getElementById('runReviewBtn');
+  const status = document.getElementById('reviewStatus');
+
+  btn.disabled = false;
+  btn.textContent = 'Run Review';
+  reviewRunning = false;
+
+  status.textContent = 'Error: ' + data.error;
+  status.className = 'review-status error';
+}
+
+// Dashboard Agent Metrics
+async function loadDashboardAgentMetrics() {
+  try {
+    // Load context stats for context agent metrics
+    const contextResponse = await fetch('/api/context-stats?days=30');
+    const contextMetrics = await contextResponse.json();
+    updateContextAgentMetrics(contextMetrics);
+
+    // Task agent metrics come from the status API (already loaded in loadDashboard)
+  } catch (error) {
+    console.error('Failed to load agent metrics:', error);
   }
 }
 

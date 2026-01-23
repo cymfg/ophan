@@ -852,6 +852,332 @@ body {
   color: var(--text-secondary);
 }
 
+/* Card Actions */
+.card-actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.review-status {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.review-status.running {
+  color: var(--accent-blue);
+}
+
+.review-status.success {
+  color: var(--accent-green);
+}
+
+.review-status.error {
+  color: var(--accent-red);
+}
+
+/* Agent Metrics Grid */
+.agent-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.agent-card {
+  background-color: var(--bg-dark);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.agent-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  margin-bottom: 12px;
+}
+
+.agent-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.metric-item .metric-name {
+  color: var(--text-secondary);
+}
+
+.metric-item .metric-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Proposals Page */
+.proposals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.proposal-item {
+  background-color: var(--bg-dark);
+  border-radius: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+}
+
+.proposal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.proposal-type {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.proposal-type.guideline {
+  background-color: rgba(107, 143, 173, 0.2);
+  color: var(--accent-blue);
+}
+
+.proposal-type.criteria {
+  background-color: rgba(185, 164, 109, 0.2);
+  color: var(--accent-gold);
+}
+
+.proposal-source {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.proposal-confidence {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.proposal-target {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+
+.proposal-reason {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-success {
+  background-color: var(--accent-green);
+  color: white;
+  border-color: var(--accent-green);
+}
+
+.btn-success:hover {
+  background-color: #3fb950;
+}
+
+/* Proposal Modal */
+.modal-large {
+  max-width: 900px;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-dark);
+}
+
+.modal-footer .form-group {
+  margin-bottom: 12px;
+}
+
+.modal-footer textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.modal-footer textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.proposal-detail {
+  padding: 0;
+}
+
+.proposal-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.proposal-section {
+  margin-top: 20px;
+}
+
+.proposal-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.proposal-section p {
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.proposal-change {
+  background-color: var(--bg-dark);
+  padding: 16px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Context Stats Page */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-select {
+  padding: 8px 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.card-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background-color: var(--bg-dark);
+  border-radius: 4px;
+}
+
+.file-item code {
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.file-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: 12px;
+}
+
+.assessment-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.assessment-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: var(--bg-dark);
+  border-radius: 6px;
+}
+
+.assessment-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+.assessment-icon.success {
+  color: var(--accent-green);
+}
+
+.assessment-icon.danger {
+  color: var(--accent-red);
+}
+
+.assessment-text {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px;
+  font-size: 14px;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .metrics-grid {
