@@ -141,11 +141,13 @@ export class LearningManager {
     file: string;
     content: string;
     reason: string;
+    learningContent?: string;
   }> {
     const proposals: Array<{
       file: string;
       content: string;
       reason: string;
+      learningContent?: string;
     }> = [];
 
     for (const learning of promotedLearnings) {
@@ -155,6 +157,7 @@ export class LearningManager {
         file: targetFile,
         content: this.formatLearningForGuideline(learning),
         reason: `Learning promoted after ${learning.references} references: ${learning.content.slice(0, 100)}`,
+        learningContent: learning.content,
       });
     }
 

@@ -191,15 +191,11 @@
               <div class="config-items">
                 <div class="config-item">
                   <span class="config-key">Backend</span>
-                  <span class="config-value" id="executionBackend">-</span>
+                  <span class="config-value" id="executionBackend">Claude Code</span>
                 </div>
                 <div class="config-item">
                   <span class="config-key">Model</span>
                   <span class="config-value" id="modelName">-</span>
-                </div>
-                <div class="config-item">
-                  <span class="config-key">Max Tokens</span>
-                  <span class="config-value" id="maxTokens">-</span>
                 </div>
               </div>
             </div>
@@ -274,48 +270,22 @@
         <div class="card">
           <form id="configForm">
             <div class="form-section">
-              <h3>Execution Backend</h3>
+              <h3>Claude Code Settings</h3>
               <div class="form-group">
-                <label for="configBackend">Backend</label>
-                <select id="configBackend" name="execution.backend">
-                  <option value="api">API - Direct Claude API (requires ANTHROPIC_API_KEY)</option>
-                  <option value="claude-code">Claude Code - Use Claude subscription</option>
-                </select>
-                <span class="form-hint">Choose how Ophan executes tasks</span>
-              </div>
-              <div id="claudeCodeSettings" style="display: none;">
-                <div class="form-group">
-                  <label for="configClaudeCodeModel">Claude Code Model</label>
-                  <select id="configClaudeCodeModel" name="execution.claudeCode.model">
-                    <option value="sonnet">Sonnet (Recommended)</option>
-                    <option value="opus">Opus</option>
-                    <option value="haiku">Haiku</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="configPermissionMode">Permission Mode</label>
-                  <select id="configPermissionMode" name="execution.claudeCode.permissionMode">
-                    <option value="acceptEdits">Accept Edits - Auto-approve file edits</option>
-                    <option value="bypassPermissions">Bypass Permissions - Full automation</option>
-                    <option value="default">Default - Require approval for each action</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-section" id="apiModelSettings">
-              <h3>API Model Settings</h3>
-              <div class="form-group">
-                <label for="configModelName">Model Name</label>
-                <select id="configModelName" name="model.name">
-                  <option value="claude-sonnet-4-20250514">claude-sonnet-4-20250514</option>
-                  <option value="claude-opus-4-20250514">claude-opus-4-20250514</option>
-                  <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
+                <label for="configClaudeCodeModel">Model</label>
+                <select id="configClaudeCodeModel" name="claudeCode.model">
+                  <option value="sonnet">Sonnet (Recommended)</option>
+                  <option value="opus">Opus</option>
+                  <option value="haiku">Haiku</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="configMaxTokens">Max Tokens</label>
-                <input type="number" id="configMaxTokens" name="model.maxTokens" min="1024" max="8192">
+                <label for="configPermissionMode">Permission Mode</label>
+                <select id="configPermissionMode" name="claudeCode.permissionMode">
+                  <option value="acceptEdits">Accept Edits - Auto-approve file edits</option>
+                  <option value="bypassPermissions">Bypass Permissions - Full automation</option>
+                  <option value="default">Default - Require approval for each action</option>
+                </select>
               </div>
             </div>
 

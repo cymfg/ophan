@@ -64,7 +64,6 @@ You have access to tools for:
 - Running shell commands (tests, linting, builds)
 - Reading and writing files
 - Searching the codebase
-- Signaling task completion
 
 ## Important Instructions
 
@@ -72,7 +71,9 @@ You have access to tools for:
 2. **Follow Guidelines**: Your guidelines exist because of past learnings - follow them
 3. **Meet Criteria**: Your work must satisfy all quality criteria
 4. **Verify Your Work**: Run tests, linting, and type checking after changes
-5. **Signal Completion**: Use the task_complete tool when done
+5. **Signal Completion**: After completing your work and verifying it passes, state clearly "TASK COMPLETE" followed by a brief summary. Do not continue exploring or verifying after this point.
+
+**IMPORTANT**: Once you have made your changes and verified they work (tests pass, types check, lint passes), STOP. Do not continue exploring the codebase or looking for additional things to verify. Be efficient.
 
 When you encounter an error or test failure:
 1. Analyze what went wrong
@@ -115,7 +116,9 @@ ${taskDescription}
 
 Start by understanding the current state of the code, then make the necessary changes.
 Run verification (tests, type checking, linting) after your changes.
-Use the task_complete tool when you're done.`;
+State "TASK COMPLETE" with a brief summary when finished.
+
+Remember: Once verification passes, STOP. Do not continue exploring.`;
 }
 
 /**
@@ -138,7 +141,9 @@ ${taskDescription}
 Please address the issues identified in the evaluation and complete the task.
 Focus on what went wrong and apply your learning to this iteration.
 
-Use the task_complete tool when you're done.`;
+State "TASK COMPLETE" with a brief summary when finished.
+
+Remember: Once verification passes, STOP. Do not continue exploring.`;
 }
 
 /**

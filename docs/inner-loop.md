@@ -52,37 +52,41 @@ sequenceDiagram
 
 ### 2. Agent Loop
 
-The agent loop executes Claude with tools until completion:
+The agent loop executes Claude Code with tools until completion:
 
 ```mermaid
 flowchart TB
-    Start([Start Loop]) --> Call[Call Claude API]
-    Call --> Response{Response Type}
+    Start([Start Loop]) --> CC[Claude Code CLI]
 
-    Response --> |"Text Only"| Text[Add to Output]
-    Response --> |"Tool Use"| Tools[Execute Tools]
+    CC --> Stream[Stream Messages]
+    Stream --> Track[Track File Usage]
+    Track --> Check{Task Complete?}
 
-    Tools --> Results[Collect Results]
-    Results --> Call
-
-    Text --> Check{Stop Reason?}
-    Check --> |"end_turn"| Done([Loop Complete])
-    Check --> |"tool_use"| Call
+    Check --> |"No"| CC
+    Check --> |"Yes"| Done([Loop Complete])
 
     subgraph "Available Tools"
-        Read[read_file]
-        Write[write_file]
-        Shell[run_shell]
-        Search[search_code]
-        Complete[task_complete]
+        Read[Read]
+        Write[Write]
+        Edit[Edit]
+        Bash[Bash]
+        Glob[Glob]
+        Grep[Grep]
     end
 
-    Tools --> Read
-    Tools --> Write
-    Tools --> Shell
-    Tools --> Search
-    Tools --> Complete
+    CC --> Read
+    CC --> Write
+    CC --> Edit
+    CC --> Bash
+    CC --> Glob
+    CC --> Grep
 ```
+
+Ophan uses Claude Code (subscription-based) for task execution:
+- No API key required (uses Claude Code subscription)
+- Full tool access via Claude Code's built-in tools
+- File usage is tracked for context agent evaluation
+- Cost limits enforced via Claude Code's budget system
 
 ### 3. Tool Execution
 
@@ -295,6 +299,37 @@ flowchart LR
     Iterations --> EvalResult
 ```
 
+## Context Usage Logging
+
+After each task, the inner loop logs context usage for the Context Agent:
+
+```mermaid
+flowchart TB
+    Task[Task Complete] --> Collect[Collect File Usage]
+
+    Collect --> Provided[Files Provided]
+    Collect --> Used[Files Actually Used]
+
+    Provided --> Metrics[Compute Metrics]
+    Used --> Metrics
+
+    Metrics --> HitRate[Hit Rate]
+    Metrics --> MissRate[Miss Rate]
+
+    HitRate --> Save[Save to context-logs/]
+    MissRate --> Save
+```
+
+**Context Usage Metrics:**
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| Hit Rate | % of provided files that were used | >70% |
+| Miss Rate | % of used files that weren't provided | <20% |
+| Exploration Tokens | Tokens spent on discovery before first write | Minimize |
+
+This data enables the Context Agent to learn which files are relevant for different task types.
+
 ## System Prompt Structure
 
 The system prompt is dynamically built for each iteration:
@@ -344,6 +379,17 @@ innerLoop:
   maxIterations: 5           # Maximum iterations before escalation
   regenerationStrategy: informed  # full | informed | incremental
   costLimit: 0.50            # Maximum cost per task in USD
+
+# Claude Code configuration
+claudeCode:
+  allowedTools:              # Tools to allow (omit for all)
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
+  maxTurns: 50               # Max conversation turns
 ```
 
 ## Metrics Tracked

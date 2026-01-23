@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-01-22
+
+### Added
+- **Context Agent**: Self-improving context compilation system that learns which files are relevant for tasks
+  - Tracks context hit rate (% of provided files actually used) and miss rate (% of used files not provided)
+  - Generates proposals to update context guidelines based on usage patterns
+  - Target metrics: >70% hit rate, <20% miss rate
+- **`ophan context-stats` command**: View context usage statistics and performance metrics
+  - Shows average hit/miss rates across tasks
+  - Identifies commonly needed but unprovided files
+  - Identifies commonly provided but unused files
+- **Interactive proposal review**: Enhanced `ophan review` with interactive CLI workflow
+  - Approve, reject, edit, or skip proposals one by one
+  - Group proposals by source (task-agent vs context-agent)
+  - View proposal details with syntax highlighting
+- New `ophan review` options:
+  - `--auto`: Auto-approve guideline changes (criteria still require approval)
+  - `--non-interactive`: Skip interactive review, save proposals to pending
+  - `--pending`: Review pending proposals from previous runs
+- Context guidelines template (`context.md`) added to `ophan init`
+- Context quality criteria template (`context-quality.md`) added to `ophan init`
+- Context usage logs stored in `.ophan/context-logs/` for analysis
+
+### Changed
+- **Claude Code Only**: Removed direct Anthropic API backend, now exclusively uses Claude Code (subscription-based)
+  - Removed `@anthropic-ai/sdk` dependency
+  - Removed `execution.backend` config option
+  - Removed `model` config section
+  - No API key required (uses Claude Code subscription)
+- Proposal type now includes `source` field to distinguish task-agent vs context-agent proposals
+- Proposal status now includes `skipped` state for deferred reviews
+- Proposals track `humanFeedback`, `reviewedAt`, and `reviewedBy` fields
+- Claude Code executor now tracks file usage for context evaluation
+- Improved Claude Code executable discovery (prefers user's PATH over node_modules)
+- Inner loop logs context usage metrics after each task
+
+### Removed
+- `src/llm/claude.ts` - ClaudeClient class (replaced by Claude Code executor)
+- `execution.backend` config option (Claude Code is now the only backend)
+- `model.name` and `model.maxTokens` config options (controlled by Claude Code)
+
 ## [0.4.1] - 2025-01-22
 
 ### Fixed
@@ -71,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved UI styling with dark theme
 - Upgraded zod to v4 for compatibility with Claude Agent SDK
 
-[Unreleased]: https://github.com/cymfg/ophan/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/cymfg/ophan/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cymfg/ophan/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/cymfg/ophan/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/cymfg/ophan/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/cymfg/ophan/compare/v0.3.2...v0.3.3

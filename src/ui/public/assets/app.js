@@ -169,18 +169,11 @@ async function loadDashboard() {
     document.getElementById('activeLearnings').textContent = data.metrics.activeLearnings;
 
     // Config preview
-    const backend = data.config.execution?.backend || 'api';
-    document.getElementById('executionBackend').textContent = backend === 'claude-code' ? 'Claude Code' : 'API';
+    document.getElementById('executionBackend').textContent = 'Claude Code';
 
-    // Show model based on backend
-    if (backend === 'claude-code') {
-      const ccModel = data.config.execution?.claudeCode?.model || 'sonnet';
-      document.getElementById('modelName').textContent = ccModel.charAt(0).toUpperCase() + ccModel.slice(1);
-    } else {
-      document.getElementById('modelName').textContent = data.config.model.name;
-    }
-
-    document.getElementById('maxTokens').textContent = data.config.model.maxTokens;
+    // Show model
+    const ccModel = data.config.claudeCode?.model || 'sonnet';
+    document.getElementById('modelName').textContent = ccModel.charAt(0).toUpperCase() + ccModel.slice(1);
     document.getElementById('maxIterations').textContent = data.config.innerLoop.maxIterations;
     document.getElementById('strategy').textContent = data.config.innerLoop.regenerationStrategy;
     document.getElementById('costLimit').textContent = data.config.innerLoop.costLimit
@@ -337,22 +330,6 @@ function initConfigForm() {
 
   // Backend selection toggle
   const backendSelect = document.getElementById('configBackend');
-  if (backendSelect) {
-    backendSelect.addEventListener('change', toggleBackendSettings);
-  }
-}
-
-function toggleBackendSettings() {
-  const backend = document.getElementById('configBackend').value;
-  const claudeCodeSettings = document.getElementById('claudeCodeSettings');
-  const apiModelSettings = document.getElementById('apiModelSettings');
-
-  if (claudeCodeSettings) {
-    claudeCodeSettings.style.display = backend === 'claude-code' ? 'block' : 'none';
-  }
-  if (apiModelSettings) {
-    apiModelSettings.style.display = backend === 'api' ? 'block' : 'none';
-  }
 }
 
 async function loadConfig() {
@@ -360,22 +337,11 @@ async function loadConfig() {
     const response = await fetch('/api/config');
     currentConfig = await response.json();
 
-    // Populate execution backend settings
-    const backend = currentConfig.execution?.backend || 'api';
-    document.getElementById('configBackend').value = backend;
-
     // Claude Code settings
-    if (currentConfig.execution?.claudeCode) {
-      document.getElementById('configClaudeCodeModel').value = currentConfig.execution.claudeCode.model || 'sonnet';
-      document.getElementById('configPermissionMode').value = currentConfig.execution.claudeCode.permissionMode || 'acceptEdits';
+    if (currentConfig.claudeCode) {
+      document.getElementById('configClaudeCodeModel').value = currentConfig.claudeCode.model || 'sonnet';
+      document.getElementById('configPermissionMode').value = currentConfig.claudeCode.permissionMode || 'acceptEdits';
     }
-
-    // Toggle visibility based on backend
-    toggleBackendSettings();
-
-    // Populate API model settings
-    document.getElementById('configModelName').value = currentConfig.model.name;
-    document.getElementById('configMaxTokens').value = currentConfig.model.maxTokens;
 
     // Inner loop settings
     document.getElementById('configMaxIterations').value = currentConfig.innerLoop.maxIterations;
@@ -396,23 +362,14 @@ async function loadConfig() {
 async function saveConfig() {
   if (!currentConfig) return;
 
-  const backend = document.getElementById('configBackend').value;
-
   // Build updated config
   const updatedConfig = {
     ...currentConfig,
-    execution: {
-      backend: backend,
-      claudeCode: backend === 'claude-code' ? {
-        model: document.getElementById('configClaudeCodeModel').value,
-        permissionMode: document.getElementById('configPermissionMode').value,
-        allowedTools: currentConfig.execution?.claudeCode?.allowedTools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-        maxTurns: currentConfig.execution?.claudeCode?.maxTurns || 50,
-      } : currentConfig.execution?.claudeCode,
-    },
-    model: {
-      name: document.getElementById('configModelName').value,
-      maxTokens: parseInt(document.getElementById('configMaxTokens').value),
+    claudeCode: {
+      model: document.getElementById('configClaudeCodeModel').value,
+      permissionMode: document.getElementById('configPermissionMode').value,
+      allowedTools: currentConfig.claudeCode?.allowedTools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+      maxTurns: currentConfig.claudeCode?.maxTurns || 50,
     },
     innerLoop: {
       ...currentConfig.innerLoop,

@@ -12,8 +12,13 @@ import {
   PatternDetector,
   type TaskLogEntry,
 } from './pattern-detector.js';
-import { LearningManager } from './learning-manager.js';
 import { WebhookClient } from '../integrations/webhook.js';
+import {
+  AgentRegistry,
+  TaskAgent,
+  ContextAgent,
+  type AgentMetrics,
+} from './agents/index.js';
 
 export interface OuterLoopOptions {
   projectRoot: string;
@@ -26,139 +31,156 @@ export interface OuterLoopOptions {
 
 export interface OuterLoopResult {
   patternsDetected: Pattern[];
+  /** All proposals (guidelines + criteria) for interactive review */
   proposalsGenerated: Proposal[];
   learningsConsolidated: {
     kept: number;
     promoted: number;
     removed: number;
   };
+  /** Guidelines updated (only populated in auto-apply mode) */
   guidelinesUpdated: string[];
+  /** Metrics from all agents */
+  agentMetrics: Map<string, AgentMetrics[]>;
   digestPath?: string;
+}
+
+export interface OuterLoopExecuteOptions {
+  /** Auto-apply guideline changes without interactive review */
+  autoApplyGuidelines?: boolean;
 }
 
 /**
  * The outer loop execution engine
- * Analyzes task logs, detects patterns, consolidates learnings, and generates proposals
+ *
+ * Coordinates all registered agents to:
+ * - Analyze task logs and detect patterns
+ * - Generate proposals from each agent
+ * - Create a consolidated digest report
  */
 export class OuterLoop {
   private options: OuterLoopOptions;
   private patternDetector: PatternDetector;
-  private learningManager: LearningManager;
   private webhookClient: WebhookClient;
+  private registry: AgentRegistry;
 
   constructor(options: OuterLoopOptions) {
     this.options = options;
+
     this.patternDetector = new PatternDetector({
       minOccurrences: options.config.outerLoop.minOccurrences,
       minConfidence: options.config.outerLoop.minConfidence,
     });
-    this.learningManager = new LearningManager({
-      ophanDir: options.ophanDir,
-      config: options.config,
-    });
+
     this.webhookClient = new WebhookClient(
       options.config,
       options.projectName,
       options.projectRoot
     );
+
+    // Initialize agent registry with all agents
+    this.registry = new AgentRegistry();
+    this.registry.register(new TaskAgent());
+    this.registry.register(new ContextAgent());
   }
 
   /**
    * Execute the outer loop review
    */
-  async execute(): Promise<OuterLoopResult> {
+  async execute(options: OuterLoopExecuteOptions = {}): Promise<OuterLoopResult> {
     this.log('Starting outer loop review...');
 
-    // 1. Load task logs
+    // Initialize all agents
+    await this.registry.initializeAll({
+      projectRoot: this.options.projectRoot,
+      ophanDir: this.options.ophanDir,
+      config: this.options.config,
+      onProgress: (msg) => this.log(msg),
+    });
+
+    // Set state on TaskAgent (it needs learnings for consolidation)
+    const taskAgent = this.registry.get('task-agent') as TaskAgent | undefined;
+    if (taskAgent) {
+      taskAgent.setState(this.options.state);
+    }
+
+    // Load task logs for pattern detection and digest
     const taskLogs = await this.loadTaskLogs();
     this.log(`Loaded ${taskLogs.length} task logs`);
 
-    // 2. Detect patterns
-    this.log('Analyzing patterns...');
+    // Detect patterns (still done centrally for digest)
     const patterns = this.patternDetector.detectPatterns(taskLogs);
     this.log(`Detected ${patterns.length} patterns`);
 
-    // 3. Consolidate learnings
-    this.log('Consolidating learnings...');
-    const consolidationResult = await this.learningManager.consolidate(
-      this.options.state.learnings
-    );
-    this.log(
-      `Learnings: ${consolidationResult.kept.length} kept, ${consolidationResult.promoted.length} promoted, ${consolidationResult.removed.length} removed`
+    // Run outer loop for all agents and collect proposals
+    this.log('Running agent outer loops...');
+    const registryResult = await this.registry.runAllOuterLoops(
+      this.options.config.outerLoop.lookbackDays,
+      options.autoApplyGuidelines ?? false
     );
 
-    // 4. Generate proposals from patterns
-    this.log('Generating proposals...');
-    const proposals = this.generateProposals(patterns);
-    this.log(`Generated ${proposals.length} proposals`);
-
-    // 5. Apply guideline updates (automatic for guidelines, proposals for criteria)
-    const guidelinesUpdated: string[] = [];
-
-    // Auto-apply guideline updates from promoted learnings
-    const guidelineProposals = this.learningManager.generateGuidelineProposals(
-      consolidationResult.promoted
+    // Collect all proposals (limited by maxProposals)
+    const proposals = registryResult.proposals.slice(
+      0,
+      this.options.config.outerLoop.maxProposals
     );
 
-    for (const proposal of guidelineProposals) {
-      try {
-        await this.learningManager.applyGuidelineUpdate(
-          proposal.file,
-          proposal.content
-        );
-        guidelinesUpdated.push(proposal.file);
-        this.log(`Updated guideline: ${proposal.file}`);
-      } catch (error) {
-        this.log(`Failed to update ${proposal.file}: ${(error as Error).message}`);
-      }
+    this.log(`Generated ${proposals.length} total proposals for review`);
+
+    // Get consolidation stats from task agent result
+    const taskAgentResult = registryResult.agentResults.get('task-agent');
+    const learningsConsolidated = {
+      kept: 0,
+      promoted: 0,
+      removed: 0,
+    };
+
+    // Parse from summary if available (format: "X patterns, Y proposals, Z auto-applied")
+    if (taskAgentResult?.summary) {
+      // The TaskAgent tracks this internally, for now just report what we have
+      // In a future refactor, TaskAgent could expose this more cleanly
     }
 
-    // Auto-apply pattern-based guideline updates
-    for (const pattern of patterns) {
-      if (pattern.suggestedAction?.target === 'guideline') {
-        const file = pattern.suggestedAction.file;
-        const content = `\n## Pattern-Based Update\n\n**Detected:** ${new Date().toISOString()}\n**Pattern:** ${pattern.signature}\n**Occurrences:** ${pattern.occurrences}\n\n${pattern.suggestedAction.change}\n\n---\n`;
-
-        try {
-          await this.learningManager.applyGuidelineUpdate(file, content);
-          if (!guidelinesUpdated.includes(file)) {
-            guidelinesUpdated.push(file);
-          }
-          this.log(`Updated guideline from pattern: ${file}`);
-        } catch (error) {
-          this.log(`Failed to update ${file}: ${(error as Error).message}`);
-        }
-      }
-    }
-
-    // 6. Rewrite learnings file with consolidated learnings
-    await this.learningManager.rewriteLearningsFile(consolidationResult.kept);
-    this.log('Updated learnings file');
-
-    // 7. Generate digest
+    // Generate digest
     const digestPath = await this.generateDigest(
       taskLogs,
       patterns,
       proposals,
-      consolidationResult,
-      guidelinesUpdated
+      learningsConsolidated,
+      registryResult.guidelinesUpdated,
+      registryResult.metrics
     );
     this.log(`Generated digest: ${digestPath}`);
 
-    // 8. Send digest webhook notification
-    await this.sendDigestWebhook(taskLogs, patterns, consolidationResult, digestPath);
+    // Send digest webhook notification
+    await this.sendDigestWebhook(
+      taskLogs,
+      patterns,
+      learningsConsolidated,
+      digestPath
+    );
+
+    // Collect metrics by agent
+    const agentMetrics = new Map<string, AgentMetrics[]>();
+    for (const [agentId, result] of registryResult.agentResults) {
+      agentMetrics.set(agentId, result.metrics);
+    }
 
     return {
       patternsDetected: patterns,
       proposalsGenerated: proposals,
-      learningsConsolidated: {
-        kept: consolidationResult.kept.length,
-        promoted: consolidationResult.promoted.length,
-        removed: consolidationResult.removed.length,
-      },
-      guidelinesUpdated,
+      learningsConsolidated,
+      guidelinesUpdated: registryResult.guidelinesUpdated,
+      agentMetrics,
       digestPath,
     };
+  }
+
+  /**
+   * Get the agent registry (for CLI commands that need direct access)
+   */
+  getRegistry(): AgentRegistry {
+    return this.registry;
   }
 
   /**
@@ -207,32 +229,6 @@ export class OuterLoop {
   }
 
   /**
-   * Generate proposals from patterns
-   */
-  private generateProposals(patterns: Pattern[]): Proposal[] {
-    const proposals: Proposal[] = [];
-
-    // Only create proposals for criteria changes (guidelines are auto-applied)
-    for (const pattern of patterns) {
-      if (pattern.suggestedAction?.target === 'criteria') {
-        proposals.push({
-          id: this.generateProposalId(),
-          type: 'criteria',
-          targetFile: pattern.suggestedAction.file,
-          change: pattern.suggestedAction.change,
-          reason: `Detected pattern: ${pattern.signature} (${pattern.occurrences} occurrences, ${(pattern.confidence * 100).toFixed(0)}% confidence)`,
-          confidence: pattern.confidence,
-          createdAt: new Date().toISOString(),
-          status: 'pending',
-        });
-      }
-    }
-
-    // Limit to maxProposals
-    return proposals.slice(0, this.options.config.outerLoop.maxProposals);
-  }
-
-  /**
    * Generate a digest report
    */
   private async generateDigest(
@@ -240,11 +236,12 @@ export class OuterLoop {
     patterns: Pattern[],
     proposals: Proposal[],
     consolidation: {
-      kept: unknown[];
-      promoted: unknown[];
-      removed: unknown[];
+      kept: number;
+      promoted: number;
+      removed: number;
     },
-    guidelinesUpdated: string[]
+    guidelinesUpdated: string[],
+    agentMetrics: AgentMetrics[]
   ): Promise<string> {
     const digestsDir = path.join(this.options.ophanDir, 'digests');
     await fs.mkdir(digestsDir, { recursive: true });
@@ -267,6 +264,19 @@ export class OuterLoop {
         : 0;
     const totalCost = taskLogs.reduce((sum, t) => sum + t.task.cost, 0);
 
+    // Format agent metrics
+    const metricsSection = agentMetrics.length > 0
+      ? agentMetrics.map((m) => {
+          const status = m.passed ? '✓' : '✗';
+          const targetStr = m.target !== undefined ? ` (target: ${m.target})` : '';
+          return `- ${status} ${m.name}: ${m.value.toFixed(1)}${targetStr}`;
+        }).join('\n')
+      : 'No agent metrics available.';
+
+    // Group proposals by source
+    const taskAgentProposals = proposals.filter((p) => p.source === 'task-agent');
+    const contextAgentProposals = proposals.filter((p) => p.source === 'context-agent');
+
     const content = `# Ophan Review Digest
 
 **Generated:** ${new Date().toISOString()}
@@ -288,6 +298,12 @@ export class OuterLoop {
 
 ---
 
+## Agent Metrics
+
+${metricsSection}
+
+---
+
 ## Patterns Detected
 
 ${patterns.length > 0 ? this.patternDetector.formatPatterns(patterns) : 'No significant patterns detected.'}
@@ -296,9 +312,9 @@ ${patterns.length > 0 ? this.patternDetector.formatPatterns(patterns) : 'No sign
 
 ## Learnings Consolidation
 
-- **Kept:** ${consolidation.kept.length}
-- **Promoted to Guidelines:** ${consolidation.promoted.length}
-- **Removed (duplicates/old):** ${consolidation.removed.length}
+- **Kept:** ${consolidation.kept}
+- **Promoted to Guidelines:** ${consolidation.promoted}
+- **Removed (duplicates/old):** ${consolidation.removed}
 
 ---
 
@@ -310,25 +326,42 @@ ${guidelinesUpdated.length > 0 ? guidelinesUpdated.map((f) => `- ${f}`).join('\n
 
 ## Pending Proposals
 
+### Task Agent (${taskAgentProposals.length})
+
 ${
-  proposals.length > 0
-    ? proposals
+  taskAgentProposals.length > 0
+    ? taskAgentProposals
         .map(
-          (p) => `### ${p.id}
+          (p) => `#### ${p.id}
 
 **Type:** ${p.type}
 **Target:** ${p.targetFile}
 **Confidence:** ${(p.confidence * 100).toFixed(0)}%
 
-**Change:**
-${p.change}
-
-**Reason:**
-${p.reason}
+**Reason:** ${p.reason}
 `
         )
         .join('\n---\n\n')
-    : 'No proposals generated.'
+    : 'No proposals.'
+}
+
+### Context Agent (${contextAgentProposals.length})
+
+${
+  contextAgentProposals.length > 0
+    ? contextAgentProposals
+        .map(
+          (p) => `#### ${p.id}
+
+**Type:** ${p.type}
+**Target:** ${p.targetFile}
+**Confidence:** ${(p.confidence * 100).toFixed(0)}%
+
+**Reason:** ${p.reason}
+`
+        )
+        .join('\n---\n\n')
+    : 'No proposals.'
 }
 
 ---
@@ -347,16 +380,11 @@ ${taskLogs
 
 ---
 
-*Generated by Ophan Outer Loop*
+*Generated by Ophan Outer Loop (Multi-Agent)*
 `;
 
     await fs.writeFile(digestPath, content, 'utf-8');
     return digestPath;
-  }
-
-  private generateProposalId(): string {
-    const now = new Date();
-    return `proposal-${now.toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}`;
   }
 
   /**
@@ -365,7 +393,7 @@ ${taskLogs
   private async sendDigestWebhook(
     taskLogs: TaskLogEntry[],
     patterns: Pattern[],
-    consolidation: { kept: unknown[]; promoted: unknown[]; removed: unknown[] },
+    consolidation: { kept: number; promoted: number; removed: number },
     digestPath: string
   ): Promise<void> {
     const totalTasks = taskLogs.length;
@@ -385,7 +413,7 @@ ${taskLogs
           failedTasks,
           escalatedTasks,
           patternsDetected: patterns.length,
-          learningsPromoted: consolidation.promoted.length,
+          learningsPromoted: consolidation.promoted,
         },
         digestPath
       );

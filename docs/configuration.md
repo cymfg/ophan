@@ -15,10 +15,16 @@ project/
 ## Complete Configuration Schema
 
 ```yaml
-# Model Configuration
-model:
-  name: claude-sonnet-4-20250514    # Claude model to use
-  maxTokens: 4096                   # Max tokens per response
+# Claude Code Configuration
+claudeCode:
+  allowedTools:                     # Tools to allow (optional, default: all)
+    - Read
+    - Write
+    - Edit
+    - Bash
+    - Glob
+    - Grep
+  maxTurns: 50                      # Max conversation turns
 
 # Inner Loop Configuration
 innerLoop:
@@ -96,6 +102,38 @@ flowchart LR
 | `claude-sonnet-4-20250514` | General coding tasks | $$ |
 | `claude-opus-4-20250514` | Complex reasoning | $$$$ |
 | `claude-3-5-haiku-*` | Simple tasks, fast | $ |
+
+### Claude Code Configuration
+
+Ophan uses Claude Code (subscription-based) for task execution:
+
+```mermaid
+flowchart TB
+    subgraph "Claude Code"
+        CC[Claude Code CLI]
+        Tools[Built-in Tools]
+        Sub[Subscription Auth]
+    end
+
+    CC --> Tools
+    CC --> Sub
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `claudeCode.allowedTools` | string[] | all | Tools to allow |
+| `claudeCode.maxTurns` | number | `50` | Max conversation turns |
+
+**Available Tools:**
+
+| Tool | Description |
+|------|-------------|
+| `Read` | Read file contents |
+| `Write` | Create/overwrite files |
+| `Edit` | Edit existing files |
+| `Bash` | Execute shell commands |
+| `Glob` | Find files by pattern |
+| `Grep` | Search file contents |
 
 ### Inner Loop Configuration
 
@@ -259,8 +297,9 @@ flowchart LR
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
 | Webhook URLs/tokens | No | As referenced in config |
+
+Note: Ophan uses Claude Code (subscription-based) for execution, so no API key is required.
 
 ## Default Configuration
 

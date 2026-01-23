@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type {
   OphanConfig,
   Task,
@@ -6,27 +5,33 @@ import type {
   Evaluation,
   Learning,
   EscalationPayload,
+  ContextUsageLog,
+  FileUsage,
 } from '../types/index.js';
-import { ClaudeClient, OPHAN_TOOLS } from '../llm/claude.js';
 import { ClaudeCodeExecutor } from '../llm/claude-code-executor.js';
 import {
   buildSystemPrompt,
   buildTaskMessage,
   buildRegenerationMessage,
-  buildLearningExtractionPrompt,
   type TaskContext,
 } from '../llm/prompts.js';
 import { ToolRunner } from './tool-runner.js';
 import { EvaluationEngine } from './evaluation.js';
 import { WebhookClient } from '../integrations/webhook.js';
+import { ContextLogger } from './context-logger.js';
 
 export interface InnerLoopOptions {
   projectRoot: string;
   projectName: string;
+  ophanDir: string;
   config: OphanConfig;
   guidelines: string;
   criteria: string;
   learnings: string;
+  /** File paths of guideline files loaded (for context tracking) */
+  guidelineFiles?: string[];
+  /** File paths of criteria files loaded (for context tracking) */
+  criteriaFiles?: string[];
   onProgress?: (message: string) => void;
   onIteration?: (iteration: number, evaluation: Evaluation) => void;
   onEscalation?: (task: Task, reason: EscalationPayload['reason'], context: EscalationPayload['context']) => void;
@@ -41,36 +46,30 @@ export interface InnerLoopResult {
 
 /**
  * The inner loop execution engine
- * Implements the learn-regenerate paradigm
+ * Implements the learn-regenerate paradigm using Claude Code
  */
 export class InnerLoop {
-  private claude: ClaudeClient;
-  private claudeCodeExecutor: ClaudeCodeExecutor | null = null;
+  private claudeCodeExecutor: ClaudeCodeExecutor;
   private toolRunner: ToolRunner;
   private evaluator: EvaluationEngine;
   private webhookClient: WebhookClient;
+  private contextLogger: ContextLogger;
   private options: InnerLoopOptions;
-  private useClaudeCode: boolean;
 
   constructor(options: InnerLoopOptions) {
     this.options = options;
-    this.useClaudeCode = options.config.execution?.backend === 'claude-code';
+    this.contextLogger = new ContextLogger({ ophanDir: options.ophanDir });
 
-    // Initialize Claude API client (used for learning extraction even with Claude Code backend)
-    this.claude = new ClaudeClient(options.config);
-
-    // Initialize Claude Code executor if using that backend
-    if (this.useClaudeCode) {
-      this.claudeCodeExecutor = new ClaudeCodeExecutor({
-        projectRoot: options.projectRoot,
-        config: options.config,
-        onProgress: options.onProgress,
-        onToolUse: (tool, result) => {
-          // Track tool outputs for evaluation
-          this.toolRunner.recordToolOutput(tool, { success: true, output: result });
-        },
-      });
-    }
+    // Initialize Claude Code executor
+    this.claudeCodeExecutor = new ClaudeCodeExecutor({
+      projectRoot: options.projectRoot,
+      config: options.config,
+      onProgress: options.onProgress,
+      onToolUse: (tool, result) => {
+        // Track tool outputs for evaluation
+        this.toolRunner.recordToolOutput(tool, { success: true, output: result });
+      },
+    });
 
     this.toolRunner = new ToolRunner({
       projectRoot: options.projectRoot,
@@ -149,11 +148,9 @@ export class InnerLoop {
               iteration
             );
 
-      // Execute agent loop with tools (using appropriate backend)
+      // Execute with Claude Code
       const { output, inputTokens, outputTokens, completed } =
-        this.useClaudeCode && this.claudeCodeExecutor
-          ? await this.executeWithClaudeCode(systemPrompt, userMessage)
-          : await this.executeAgentLoop(systemPrompt, userMessage);
+        await this.executeWithClaudeCode(systemPrompt, userMessage);
 
       totalInputTokens += inputTokens;
       totalOutputTokens += outputTokens;
@@ -193,10 +190,7 @@ export class InnerLoop {
       // This forces the agent to address criteria violations
 
       // Check cost limit
-      const currentCost = this.claude.estimateCost(
-        totalInputTokens,
-        totalOutputTokens
-      );
+      const currentCost = this.estimateCost(totalInputTokens, totalOutputTokens);
       if (
         this.options.config.innerLoop.costLimit &&
         currentCost >= this.options.config.innerLoop.costLimit
@@ -230,23 +224,18 @@ export class InnerLoop {
 
     task.completedAt = new Date().toISOString();
     task.tokensUsed = totalInputTokens + totalOutputTokens;
-    task.cost = this.claude.estimateCost(totalInputTokens, totalOutputTokens);
+    task.cost = this.estimateCost(totalInputTokens, totalOutputTokens);
 
     this.log(
       `Task ${task.status}: ${task.iterations} iterations, $${task.cost.toFixed(4)}`
     );
 
-    // Extract learnings from the task
-    const learnings = await this.extractLearnings(
-      taskDescription,
-      task.iterations,
-      evaluations.map((e) => this.evaluator.formatEvaluation(e)),
-      task.status === 'converged'
-        ? 'success'
-        : task.status === 'escalated'
-          ? 'escalated'
-          : 'failure'
-    );
+    // Log context usage for the context agent's self-improvement
+    await this.logContextUsage(task, totalInputTokens + totalOutputTokens);
+
+    // Note: Learning extraction is not available without API backend
+    // Learnings can be manually added or we can implement this via Claude Code in the future
+    const learnings: Learning[] = [];
 
     return {
       task,
@@ -257,7 +246,51 @@ export class InnerLoop {
   }
 
   /**
-   * Execute using Claude Code backend (subscription-based)
+   * Log context usage data for the context agent's evaluation
+   */
+  private async logContextUsage(task: Task, totalTokens: number): Promise<void> {
+    try {
+      // Get file usage from Claude Code executor
+      const fileUsage: FileUsage = this.claudeCodeExecutor.getFileUsage();
+
+      // Determine provided context files
+      const providedFiles = [
+        ...(this.options.guidelineFiles ?? []),
+        ...(this.options.criteriaFiles ?? []),
+      ];
+
+      // Compute metrics
+      const metrics = this.contextLogger.computeMetrics(
+        providedFiles,
+        fileUsage,
+        0, // TODO: Track exploration tokens (tokens before first write)
+        totalTokens
+      );
+
+      // Build and save the context usage log
+      const usageLog: ContextUsageLog = {
+        taskId: task.id,
+        taskDescription: task.description,
+        providedContext: {
+          guidelines: this.options.guidelineFiles ?? [],
+          criteria: this.options.criteriaFiles ?? [],
+          files: providedFiles,
+        },
+        actualUsage: fileUsage,
+        metrics,
+        timestamp: new Date().toISOString(),
+      };
+
+      await this.contextLogger.saveLog(usageLog);
+      this.log(`Context usage logged: hit=${metrics.contextHitRate.toFixed(0)}%, miss=${metrics.contextMissRate.toFixed(0)}%`);
+    } catch (error) {
+      // Don't fail the task if context logging fails
+      this.log(`Warning: Failed to log context usage: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Execute using Claude Code
    */
   private async executeWithClaudeCode(
     systemPrompt: string,
@@ -268,10 +301,6 @@ export class InnerLoop {
     outputTokens: number;
     completed: boolean;
   }> {
-    if (!this.claudeCodeExecutor) {
-      throw new Error('Claude Code executor not initialized');
-    }
-
     const result = await this.claudeCodeExecutor.execute(systemPrompt, taskMessage);
 
     return {
@@ -280,182 +309,6 @@ export class InnerLoop {
       outputTokens: result.outputTokens,
       completed: result.completed,
     };
-  }
-
-  /**
-   * Execute the agent loop with tool use (API backend)
-   */
-  private async executeAgentLoop(
-    systemPrompt: string,
-    initialMessage: string
-  ): Promise<{
-    output: string;
-    inputTokens: number;
-    outputTokens: number;
-    completed: boolean;
-  }> {
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: initialMessage },
-    ];
-
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let completed = false;
-    let output = '';
-
-    // Maximum tool calls per iteration to prevent infinite loops
-    const maxToolCalls = 50;
-    let toolCallCount = 0;
-
-    while (toolCallCount < maxToolCalls) {
-      const response = await this.claude.chatWithTools(
-        systemPrompt,
-        messages,
-        OPHAN_TOOLS
-      );
-
-      totalInputTokens += response.inputTokens;
-      totalOutputTokens += response.outputTokens;
-
-      if (response.content) {
-        output += response.content + '\n';
-        this.log(response.content);
-      }
-
-      // Check if any tools were called
-      if (response.toolCalls.length === 0) {
-        // No tool calls and end_turn - we're done
-        if (response.stopReason === 'end_turn') {
-          break;
-        }
-      }
-
-      // Process tool calls
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const toolCall of response.toolCalls) {
-        toolCallCount++;
-
-        if (toolCall.name === 'task_complete') {
-          completed = true;
-          const summary = toolCall.input.summary as string;
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: `tool_${toolCallCount}`,
-            content: `Task marked as complete: ${summary}`,
-          });
-        } else {
-          const result = await this.toolRunner.execute(
-            toolCall.name,
-            toolCall.input
-          );
-
-          this.log(`[${toolCall.name}] ${result.success ? '✓' : '✗'}`);
-
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: `tool_${toolCallCount}`,
-            content: result.error
-              ? `Error: ${result.error}\n${result.output}`
-              : result.output,
-            is_error: !result.success,
-          });
-        }
-      }
-
-      // Add assistant message with tool use
-      const assistantContent: Anthropic.ContentBlock[] = [];
-      if (response.content) {
-        assistantContent.push({ type: 'text', text: response.content });
-      }
-      for (let i = 0; i < response.toolCalls.length; i++) {
-        const call = response.toolCalls[i];
-        assistantContent.push({
-          type: 'tool_use',
-          id: `tool_${toolCallCount - response.toolCalls.length + i + 1}`,
-          name: call.name,
-          input: call.input,
-        });
-      }
-
-      messages.push({ role: 'assistant', content: assistantContent });
-
-      // Add tool results
-      messages.push({
-        role: 'user',
-        content: toolResults,
-      });
-
-      if (completed) {
-        break;
-      }
-    }
-
-    return {
-      output,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      completed,
-    };
-  }
-
-  /**
-   * Extract learnings from a completed task
-   */
-  private async extractLearnings(
-    taskDescription: string,
-    iterations: number,
-    evaluationHistory: string[],
-    outcome: 'success' | 'failure' | 'escalated'
-  ): Promise<Learning[]> {
-    // Only extract learnings if there were multiple iterations or failures
-    if (iterations === 1 && outcome === 'success') {
-      return [];
-    }
-
-    try {
-      const prompt = buildLearningExtractionPrompt(
-        taskDescription,
-        iterations,
-        evaluationHistory,
-        outcome
-      );
-
-      const response = await this.claude.chat(
-        'You are a learning extraction assistant. Analyze task outcomes and extract generalizable learnings.',
-        [{ role: 'user', content: prompt }]
-      );
-
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return [];
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      return (parsed.learnings || []).map(
-        (l: {
-          content: string;
-          context: string;
-          issue: string;
-          resolution: string;
-          guidelineImpact: string;
-        }) => ({
-          id: this.generateLearningId(),
-          content: l.content,
-          context: l.context,
-          issue: l.issue,
-          resolution: l.resolution,
-          guidelineImpact: l.guidelineImpact,
-          timestamp: new Date().toISOString(),
-          references: 1,
-          promoted: false,
-        })
-      );
-    } catch {
-      this.log('Failed to extract learnings');
-      return [];
-    }
   }
 
   /**
@@ -492,16 +345,22 @@ export class InnerLoop {
     this.options.onProgress?.(message);
   }
 
+  /**
+   * Estimate cost based on token usage
+   */
+  private estimateCost(inputTokens: number, outputTokens: number): number {
+    // Standard Claude pricing
+    // Input: $3 per million tokens, Output: $15 per million tokens
+    const inputCost = (inputTokens / 1_000_000) * 3;
+    const outputCost = (outputTokens / 1_000_000) * 15;
+    return inputCost + outputCost;
+  }
+
   private generateTaskId(): string {
     const now = new Date();
     const date = now.toISOString().slice(0, 10).replace(/-/g, '');
     const time = now.toISOString().slice(11, 19).replace(/:/g, '');
     const random = Math.random().toString(36).slice(2, 6);
     return `task-${date}-${time}-${random}`;
-  }
-
-  private generateLearningId(): string {
-    const now = new Date();
-    return now.toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
   }
 }

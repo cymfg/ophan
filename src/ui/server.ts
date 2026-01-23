@@ -99,7 +99,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
         projectName,
         projectPath: projectRoot,
         config: {
-          model: config.model,
+          claudeCode: config.claudeCode,
           innerLoop: config.innerLoop,
           outerLoop: {
             triggers: config.outerLoop.triggers,
@@ -308,14 +308,6 @@ export function createUIServer(options: UIServerOptions): UIServer {
       }
 
       const config = loadConfig(projectRoot);
-
-      // Check for API key only when using the API backend
-      if (config.execution.backend === 'api' && !process.env.ANTHROPIC_API_KEY) {
-        res.status(400).json({
-          error: 'ANTHROPIC_API_KEY environment variable is not set',
-        });
-        return;
-      }
       const projectName = path.basename(projectRoot);
 
       // Load guidelines, criteria, learnings
@@ -360,6 +352,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
         description,
         config,
         projectName,
+        ophanDir,
         guidelines,
         criteria,
         learnings,
@@ -404,6 +397,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
     description: string,
     config: ReturnType<typeof loadConfig>,
     projectName: string,
+    ophanDir: string,
     guidelines: string,
     criteria: string,
     learnings: string,
@@ -416,6 +410,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
       const innerLoop = new InnerLoop({
         projectRoot,
         projectName,
+        ophanDir,
         config,
         guidelines,
         criteria,

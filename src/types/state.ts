@@ -20,12 +20,20 @@ export const LearningSchema = z.object({
 export const ProposalSchema = z.object({
   id: z.string(),
   type: z.enum(['guideline', 'criteria']),
+  /** Which agent generated this proposal */
+  source: z.enum(['task-agent', 'context-agent']).default('task-agent'),
   targetFile: z.string(),
   change: z.string(),
   reason: z.string(),
   confidence: z.number().min(0).max(1),
   createdAt: z.string().datetime(),
-  status: z.enum(['pending', 'approved', 'rejected']).default('pending'),
+  status: z.enum(['pending', 'approved', 'rejected', 'skipped']).default('pending'),
+  /** Human feedback when edited or rejected */
+  humanFeedback: z.string().optional(),
+  /** When the proposal was reviewed */
+  reviewedAt: z.string().datetime().optional(),
+  /** Who reviewed (for future multi-user support) */
+  reviewedBy: z.string().optional(),
 });
 
 export const MetricsSchema = z.object({
