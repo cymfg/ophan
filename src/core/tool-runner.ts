@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { glob } from 'glob';
-import type { OphanConfig } from '../types/index.js';
+import type { OphanConfig, FileUsage } from '../types/index.js';
 
 export interface ToolResult {
   success: boolean;
@@ -22,6 +22,22 @@ export class ToolRunner {
   private projectRoot: string;
   private config: OphanConfig;
   private toolOutputs: string[] = [];
+
+  // File usage tracking for context agent evaluation
+  private fileUsage: {
+    read: Set<string>;
+    written: Set<string>;
+    searched: Set<string>;
+    commands: string[];
+  } = {
+    read: new Set(),
+    written: new Set(),
+    searched: new Set(),
+    commands: [],
+  };
+
+  // Track when first write happens (for exploration token calculation)
+  private firstWriteOccurred: boolean = false;
 
   constructor(options: ToolRunnerOptions) {
     this.projectRoot = options.projectRoot;
@@ -43,15 +59,28 @@ export class ToolRunner {
           input.command as string,
           input.timeout as number | undefined
         );
+        // Track command
+        if (result.success) {
+          this.fileUsage.commands.push(input.command as string);
+        }
         break;
       case 'read_file':
         result = await this.readFile(input.path as string);
+        // Track file read
+        if (result.success) {
+          this.fileUsage.read.add(this.normalizePath(input.path as string));
+        }
         break;
       case 'write_file':
         result = await this.writeFile(
           input.path as string,
           input.content as string
         );
+        // Track file write and mark first write
+        if (result.success) {
+          this.fileUsage.written.add(this.normalizePath(input.path as string));
+          this.firstWriteOccurred = true;
+        }
         break;
       case 'list_files':
         result = await this.listFiles(
@@ -65,6 +94,10 @@ export class ToolRunner {
           input.path as string | undefined,
           input.filePattern as string | undefined
         );
+        // Track files found in search results
+        if (result.success) {
+          this.extractSearchedFiles(result.output);
+        }
         break;
       case 'task_complete':
         result = {
@@ -100,6 +133,38 @@ export class ToolRunner {
    */
   clearToolOutputs(): void {
     this.toolOutputs = [];
+  }
+
+  /**
+   * Get file usage data for context evaluation
+   */
+  getFileUsage(): FileUsage {
+    return {
+      filesRead: [...this.fileUsage.read],
+      filesWritten: [...this.fileUsage.written],
+      filesSearched: [...this.fileUsage.searched],
+      commandsRun: [...this.fileUsage.commands],
+    };
+  }
+
+  /**
+   * Check if first write has occurred (for exploration token calculation)
+   */
+  hasFirstWriteOccurred(): boolean {
+    return this.firstWriteOccurred;
+  }
+
+  /**
+   * Clear file usage data (for new task)
+   */
+  clearFileUsage(): void {
+    this.fileUsage = {
+      read: new Set(),
+      written: new Set(),
+      searched: new Set(),
+      commands: [],
+    };
+    this.firstWriteOccurred = false;
   }
 
   /**
@@ -342,5 +407,32 @@ export class ToolRunner {
     }
 
     return false;
+  }
+
+  /**
+   * Normalize a file path to relative form for consistent tracking
+   */
+  private normalizePath(filePath: string): string {
+    // Convert absolute paths to relative
+    if (path.isAbsolute(filePath)) {
+      return path.relative(this.projectRoot, filePath);
+    }
+    // Normalize the relative path
+    return path.normalize(filePath);
+  }
+
+  /**
+   * Extract file paths from search results output
+   * Format: "file.ts:123: matched line content"
+   */
+  private extractSearchedFiles(output: string): void {
+    const lines = output.split('\n');
+    for (const line of lines) {
+      // Match "filename:lineNumber:" pattern
+      const match = line.match(/^([^:]+):\d+:/);
+      if (match) {
+        this.fileUsage.searched.add(this.normalizePath(match[1]));
+      }
+    }
   }
 }

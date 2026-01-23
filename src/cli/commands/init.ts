@@ -255,6 +255,35 @@ async function detectProjectType(projectRoot: string): Promise<ProjectDetection>
 
 function getTemplateGuidelines(template: string): Record<string, string> {
   const baseGuidelines: Record<string, string> = {
+    'context.md': `# Context Compilation Guidelines
+
+This file defines how Ophan identifies relevant files for tasks.
+The context agent learns which files matter for which task types.
+
+## General Patterns
+
+- Configuration files (config/, .env patterns) are often relevant
+- Type definition files help understand data structures
+- Test files can reveal expected behavior
+- Entry points (index files, main files) provide architecture overview
+
+## File Relationships
+
+- When modifying a file, its direct importers may need updates
+- Test files are relevant when modifying their source files
+- Shared utilities are often relevant across tasks
+
+## Learned Patterns
+
+<!-- This section is populated by the outer loop as patterns emerge -->
+<!-- Example pattern:
+- Tasks matching "auth" or "login" commonly need:
+  - src/auth/**
+  - src/middleware/auth.ts
+  - src/types/user.ts
+-->
+`,
+
     'coding.md': `# Coding Guidelines
 
 ## Workflows
@@ -406,6 +435,45 @@ npm run test:coverage # With coverage
 
 function getTemplateCriteria(template: string): Record<string, string> {
   const baseCriteria: Record<string, string> = {
+    'context-quality.md': `# Context Quality Criteria
+
+This file defines evaluation criteria for the context agent.
+These metrics measure how well Ophan predicts relevant files.
+
+## Hit Rate
+
+- **Target**: >70% of provided files should be used
+- Files provided but never touched indicate waste
+- Measures efficiency of context prediction
+
+## Miss Rate
+
+- **Target**: <20% of files used should have been unprovided
+- High miss rate means poor prediction
+- Measures completeness of context prediction
+
+## Exploration Efficiency
+
+- **Target**: <10% of tokens spent on file discovery
+- Exploration tokens = reads/searches before first write
+- Lower is better - means context was complete
+
+## Evaluation Method
+
+After each task:
+1. Compare files provided in context vs files actually accessed
+2. Calculate hit rate: (provided ∩ accessed) / provided
+3. Calculate miss rate: (accessed - provided) / accessed
+4. Track exploration tokens: tokens before first file write
+
+## Improvement Triggers
+
+When metrics consistently fail targets:
+- Hit rate <70%: Context prediction includes irrelevant files
+- Miss rate >20%: Context prediction misses important files
+- Exploration >10%: Agent spending too much time exploring
+`,
+
     'quality.md': `# Quality Criteria
 
 ## Evaluation Criteria
@@ -519,17 +587,25 @@ Ophan uses the Two-Loop Paradigm for self-improvement.
 Guidelines define the agent's workflows, data structures, and constraints.
 The agent can freely update these based on learnings.
 
+### Task Execution Agent
 - [Coding Guidelines](.ophan/guidelines/coding.md)
 - [Testing Guidelines](.ophan/guidelines/testing.md)
 - [Learnings](.ophan/guidelines/learnings.md)
+
+### Context Agent
+- [Context Guidelines](.ophan/guidelines/context.md)
 
 ## Criteria (What Good Looks Like)
 
 Criteria define quality standards and evaluation methods.
 Only humans (EITL) can approve changes to criteria.
 
+### Task Execution Agent
 - [Quality Criteria](.ophan/criteria/quality.md)
 - [Security Criteria](.ophan/criteria/security.md)
+
+### Context Agent
+- [Context Quality Criteria](.ophan/criteria/context-quality.md)
 
 ## Commands
 

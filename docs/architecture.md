@@ -8,11 +8,18 @@ This document provides a comprehensive overview of Ophan's architecture, based o
 flowchart TB
     subgraph "User Interface"
         CLI[CLI Commands]
+        UI[Web UI]
+    end
+
+    subgraph "Agent Framework"
+        AR[Agent Registry]
+        TA[Task Agent]
+        CA[Context Agent]
     end
 
     subgraph "Inner Loop"
         IL[Inner Loop Engine]
-        Claude[Claude API]
+        Claude[Claude Code]
         Tools[Tool Runner]
         Eval[Evaluation Engine]
     end
@@ -22,6 +29,7 @@ flowchart TB
         PD[Pattern Detector]
         LM[Learning Manager]
         DG[Digest Generator]
+        IR[Interactive Reviewer]
     end
 
     subgraph "Storage"
@@ -30,6 +38,7 @@ flowchart TB
         Guidelines[Guidelines]
         Criteria[Criteria]
         Logs[Task Logs]
+        CtxLogs[Context Logs]
         Digests[Digests]
     end
 
@@ -37,19 +46,27 @@ flowchart TB
         Webhooks[Webhook Client]
     end
 
-    CLI --> IL
-    CLI --> OL
+    CLI --> AR
+    UI --> AR
+    AR --> TA
+    AR --> CA
+
+    TA --> IL
+    CA --> CtxLogs
 
     IL --> Claude
     IL --> Tools
     IL --> Eval
     IL --> Logs
+    IL --> CtxLogs
     IL --> Webhooks
 
     OL --> PD
     OL --> LM
     OL --> DG
+    OL --> IR
     OL --> Logs
+    OL --> CtxLogs
     OL --> Digests
     OL --> Webhooks
 
@@ -99,35 +116,98 @@ flowchart LR
 
 ## Component Architecture
 
+### Agent Framework
+
+Ophan uses a multi-agent architecture where each agent has its own (G,C) pair:
+
+```mermaid
+classDiagram
+    class BaseAgent {
+        <<interface>>
+        +id: AgentId
+        +name: string
+        +description: string
+        +guidance: AgentGuidanceConfig
+        +initialize(options): Promise
+        +runOuterLoop(days, auto): Promise
+        +getMetrics(): Promise
+        +log(message): void
+    }
+
+    class ExecutableAgent {
+        <<interface>>
+        +canExecuteTasks: true
+        +executeTask(description): Promise
+    }
+
+    class TaskAgent {
+        +id: "task-agent"
+        +guidance: coding.md, testing.md, learnings.md
+        +executeTask(): InnerLoopResult
+        +runOuterLoop(): Proposals
+    }
+
+    class ContextAgent {
+        +id: "context-agent"
+        +guidance: context.md
+        +runOuterLoop(): Proposals
+        +getMetrics(): HitRate, MissRate
+    }
+
+    class AgentRegistry {
+        -agents: Map
+        +register(agent): void
+        +get(id): BaseAgent
+        +getExecutable(): ExecutableAgent[]
+        +all(): BaseAgent[]
+    }
+
+    BaseAgent <|-- ExecutableAgent
+    ExecutableAgent <|.. TaskAgent
+    BaseAgent <|.. ContextAgent
+    AgentRegistry o-- BaseAgent
+```
+
 ### Inner Loop Components
 
 ```mermaid
 classDiagram
     class InnerLoop {
-        -claude: ClaudeClient
+        -claudeCodeExecutor: ClaudeCodeExecutor
         -toolRunner: ToolRunner
         -evaluator: EvaluationEngine
+        -contextLogger: ContextLogger
         -webhookClient: WebhookClient
         +execute(taskDescription): InnerLoopResult
-        -executeAgentLoop(): AgentResult
+        -executeWithClaudeCode(): AgentResult
+        -logContextUsage(): void
         -extractLearnings(): Learning[]
         -triggerEscalation(): void
     }
 
-    class ClaudeClient {
-        -client: Anthropic
-        -config: OphanConfig
-        +chat(system, messages): Response
-        +chatWithTools(system, messages, tools): Response
-        +estimateCost(input, output): number
+    class ClaudeCodeExecutor {
+        -options: ClaudeCodeExecutorOptions
+        -fileUsage: FileUsage
+        +execute(prompt): ExecutionResult
+        +getFileUsage(): FileUsage
+        +clearFileUsage(): void
     }
 
     class ToolRunner {
         -projectRoot: string
         -config: OphanConfig
         -toolOutputs: Map
+        -fileUsage: FileUsage
         +execute(tool, input): ToolResult
         +getToolOutputs(): ToolOutput[]
+        +getFileUsage(): FileUsage
+    }
+
+    class ContextLogger {
+        -logsDir: string
+        +saveLog(log): void
+        +getAggregateMetrics(days): Metrics
+        +computeMetrics(): ContextUsageMetrics
     }
 
     class EvaluationEngine {
@@ -137,8 +217,9 @@ classDiagram
         +formatEvaluation(eval): string
     }
 
-    InnerLoop --> ClaudeClient
+    InnerLoop --> ClaudeCodeExecutor
     InnerLoop --> ToolRunner
+    InnerLoop --> ContextLogger
     InnerLoop --> EvaluationEngine
 ```
 
@@ -147,13 +228,25 @@ classDiagram
 ```mermaid
 classDiagram
     class OuterLoop {
+        -registry: AgentRegistry
         -patternDetector: PatternDetector
         -learningManager: LearningManager
+        -interactiveReviewer: InteractiveReviewer
         -webhookClient: WebhookClient
-        +execute(): OuterLoopResult
+        +execute(options): OuterLoopResult
+        -runAgentOuterLoops(): Proposal[]
         -loadTaskLogs(): TaskLogEntry[]
         -generateProposals(): Proposal[]
         -generateDigest(): string
+    }
+
+    class InteractiveReviewer {
+        -options: ReviewerOptions
+        +review(proposals): ReviewResult
+        -displayProposal(): void
+        -promptForAction(): ReviewAction
+        -applyProposal(): void
+        -displaySummary(): void
     }
 
     class PatternDetector {
@@ -174,6 +267,7 @@ classDiagram
         +applyGuidelineUpdate(file, content): void
     }
 
+    OuterLoop --> InteractiveReviewer
     OuterLoop --> PatternDetector
     OuterLoop --> LearningManager
 ```
@@ -267,14 +361,18 @@ project/
 ├── .ophan.yaml                   # Configuration
 └── .ophan/
     ├── guidelines/               # Agent CAN edit
-    │   ├── coding.md            # Coding workflows
-    │   ├── testing.md           # Testing practices
+    │   ├── coding.md            # Coding workflows (Task Agent)
+    │   ├── testing.md           # Testing practices (Task Agent)
+    │   ├── context.md           # Context patterns (Context Agent)
     │   └── learnings.md         # Extracted learnings
     ├── criteria/                 # Agent CANNOT edit
-    │   ├── quality.md           # Quality standards
-    │   └── security.md          # Security requirements
+    │   ├── quality.md           # Quality standards (Task Agent)
+    │   ├── security.md          # Security requirements (Task Agent)
+    │   └── context-quality.md   # Context metrics (Context Agent)
     ├── logs/                     # Task execution logs
     │   └── task-YYYYMMDD-*.json
+    ├── context-logs/             # Context usage logs (Context Agent)
+    │   └── task-*.json
     ├── digests/                  # Outer loop reports
     │   └── YYYY-MM-DD.md
     └── state.json                # Runtime state

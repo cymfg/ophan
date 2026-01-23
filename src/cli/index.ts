@@ -7,6 +7,7 @@ import { reviewCommand } from './commands/review.js';
 import { statusCommand } from './commands/status.js';
 import { logsCommand } from './commands/logs.js';
 import { createUICommand } from './commands/ui.js';
+import { contextStatsCommand } from './commands/context-stats.js';
 import { setLogLevel } from './utils/logger.js';
 
 const program = new Command();
@@ -32,6 +33,7 @@ program.addCommand(reviewCommand);
 program.addCommand(statusCommand);
 program.addCommand(logsCommand);
 program.addCommand(createUICommand());
+program.addCommand(contextStatsCommand);
 
 // Parse and execute
 program.parse();

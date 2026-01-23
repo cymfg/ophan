@@ -1,6 +1,4 @@
 import type { Evaluation, EvaluationFailure, OphanConfig } from '../types/index.js';
-import { ClaudeClient } from '../llm/claude.js';
-import { buildEvaluationPrompt } from '../llm/prompts.js';
 
 export interface EvaluationResult extends Evaluation {
   rawResponse?: string;
@@ -15,63 +13,11 @@ export interface EvaluationOptions {
 
 /**
  * Evaluation engine that checks task output against criteria
+ * Uses tool-based evaluation (tests, lint, build checks)
  */
 export class EvaluationEngine {
-  private claude: ClaudeClient;
-
-  constructor(config: OphanConfig) {
-    this.claude = new ClaudeClient(config);
-  }
-
-  /**
-   * Evaluate task output against criteria using Claude
-   */
-  async evaluate(options: EvaluationOptions): Promise<EvaluationResult> {
-    const { taskDescription, criteria, toolOutputs } = options;
-
-    const prompt = buildEvaluationPrompt(taskDescription, criteria, toolOutputs);
-
-    try {
-      const response = await this.claude.chat(
-        'You are an evaluation assistant. Analyze the task output against the criteria and respond with a JSON evaluation.',
-        [{ role: 'user', content: prompt }]
-      );
-
-      // Parse the JSON response
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return this.createErrorEvaluation('Failed to parse evaluation response');
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      const failures: EvaluationFailure[] = [];
-      const passedCriteria: string[] = [];
-
-      for (const criterion of parsed.criteria || []) {
-        if (criterion.passed) {
-          passedCriteria.push(criterion.name);
-        } else {
-          failures.push({
-            criterion: criterion.name,
-            message: criterion.message || 'Failed',
-            severity: criterion.severity || 'error',
-          });
-        }
-      }
-
-      return {
-        passed: parsed.passed ?? failures.length === 0,
-        criteria: passedCriteria,
-        failures,
-        score: parsed.score ?? (parsed.passed ? 100 : 0),
-        rawResponse: response.content,
-      };
-    } catch (error) {
-      return this.createErrorEvaluation(
-        `Evaluation failed: ${(error as Error).message}`
-      );
-    }
+  constructor(_config: OphanConfig) {
+    // Config stored for future use if needed
   }
 
   /**
@@ -83,45 +29,62 @@ export class EvaluationEngine {
     const passedCriteria: string[] = [];
 
     // Check for common failure patterns
+    // NOTE: These patterns must be specific to avoid false positives from
+    // unrelated text like log messages, variable names, or LLM commentary.
+    // Patterns must match actual test runner output, not generic words.
     const checks = [
       {
         name: 'Tests',
-        failPattern: /(?:FAIL|failed|error|Error:)/i,
-        successPattern: /(?:pass|passed|✓|All tests passed)/i,
+        // Match specific test runner failure formats
+        // - Jest: "FAIL src/foo.test.ts", "Tests: 1 failed", "X failing"
+        // - npm: "npm ERR! Test failed"
+        // Excludes: "0 failed", generic "error", "[tool] ✗"
+        failPattern: /(?:FAIL\s+(?:src|test|spec)\/|Tests?:\s*[1-9]\d*\s+failed|[1-9]\d*\s+failing|[1-9]\d*\s+failed,|npm ERR!.*test failed)/i,
+        // Match specific test runner success formats
+        // - Jest: "Tests: 10 passed", "✓ foo test (10ms)"
+        // - Vitest: "10 passed"
+        successPattern: /(?:Tests?:\s*\d+\s+passed,?\s*\d*\s*total|All\s+\d+\s+tests?\s+passed|✓.*\(\d+\s*m?s\)|passed,\s*0\s+failed|\d+\s+pass(?:ed)?[,\s]+0\s+fail)/i,
       },
       {
         name: 'TypeScript',
-        failPattern: /(?:error TS\d+|Type error)/i,
-        successPattern: /(?:no errors|successfully compiled)/i,
+        // Match TypeScript compiler error codes specifically (e.g., "error TS2304:")
+        failPattern: /(?:error TS\d{4}:|Found [1-9]\d* errors?)/i,
+        successPattern: /(?:Successfully compiled \d+ files|Found 0 errors|no errors)/i,
       },
       {
         name: 'ESLint',
-        failPattern: /(?:\d+ error|eslint.*error)/i,
-        successPattern: /(?:no problems|0 errors)/i,
+        // Match ESLint's specific error format (e.g., "✖ 5 problems")
+        failPattern: /(?:✖\s+[1-9]\d*\s+problems?|[1-9]\d*\s+errors?\s+and\s+\d+\s+warnings?)/i,
+        successPattern: /(?:✔\s+No\s+(?:ESLint\s+)?(?:warnings|errors|problems)|0\s+problems?|no\s+problems?)/i,
       },
       {
         name: 'Build',
-        failPattern: /(?:build failed|compilation failed)/i,
-        successPattern: /(?:build succeeded|successfully built)/i,
+        // Match specific build failure messages
+        failPattern: /(?:Build failed|Failed to compile|Build error:|Compilation failed)/i,
+        successPattern: /(?:Build succeeded|Compiled successfully|Build complete|Successfully built)/i,
       },
     ];
 
     for (const check of checks) {
-      // Only evaluate if there's relevant output
-      const hasRelevantOutput =
-        check.failPattern.test(toolOutputs) ||
-        check.successPattern.test(toolOutputs);
+      const hasFailure = check.failPattern.test(toolOutputs);
+      const hasSuccess = check.successPattern.test(toolOutputs);
 
-      if (hasRelevantOutput) {
-        if (check.failPattern.test(toolOutputs)) {
-          failures.push({
-            criterion: check.name,
-            message: `${check.name} check failed - see tool output for details`,
-            severity: 'error',
-          });
-        } else if (check.successPattern.test(toolOutputs)) {
-          passedCriteria.push(check.name);
-        }
+      // Only evaluate if there's relevant output
+      if (!hasFailure && !hasSuccess) {
+        continue;
+      }
+
+      // If we have clear success and no failure, it's a pass
+      // If we have failure (even with some success), it's a failure
+      // This handles partial failures like "5 passed, 2 failed"
+      if (hasFailure) {
+        failures.push({
+          criterion: check.name,
+          message: `${check.name} check failed - see tool output for details`,
+          severity: 'error',
+        });
+      } else if (hasSuccess) {
+        passedCriteria.push(check.name);
       }
     }
 
@@ -137,28 +100,16 @@ export class EvaluationEngine {
   }
 
   /**
-   * Combine quick evaluation with full LLM evaluation
+   * Full evaluation using tool-based checks
    *
-   * IMPORTANT: Always runs full LLM evaluation to check custom criteria.
-   * This ensures that product constraints (like "only build calculator features")
-   * are enforced even when tests pass. Critical for autonomous operation.
+   * Note: LLM-based criteria evaluation is not available without API backend.
+   * This uses only tool output analysis (tests, lint, build, etc.)
    */
   async fullEvaluation(options: EvaluationOptions): Promise<EvaluationResult> {
-    // First do quick tool-based evaluation (tests, lint, build, etc.)
-    const quickEval = this.evaluateToolOutputs(options.toolOutputs);
+    // Do tool-based evaluation (tests, lint, build, etc.)
+    const toolEval = this.evaluateToolOutputs(options.toolOutputs);
 
-    // Always run full LLM evaluation to check custom criteria
-    // This is essential for enforcing product constraints and guidelines
-    const fullEval = await this.evaluate(options);
-
-    // Merge results - task must pass BOTH tool checks AND criteria
-    return {
-      passed: quickEval.passed && fullEval.passed,
-      criteria: [...new Set([...quickEval.criteria, ...fullEval.criteria])],
-      failures: [...quickEval.failures, ...fullEval.failures],
-      score: Math.min(quickEval.score, fullEval.score),
-      rawResponse: fullEval.rawResponse,
-    };
+    return toolEval;
   }
 
   /**
@@ -189,20 +140,5 @@ export class EvaluationEngine {
     }
 
     return lines.join('\n');
-  }
-
-  private createErrorEvaluation(message: string): EvaluationResult {
-    return {
-      passed: false,
-      criteria: [],
-      failures: [
-        {
-          criterion: 'Evaluation',
-          message,
-          severity: 'error',
-        },
-      ],
-      score: 0,
-    };
   }
 }

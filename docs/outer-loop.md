@@ -7,22 +7,71 @@ The outer loop is Ophan's periodic review engine. It analyzes task logs to detec
 ```mermaid
 flowchart TB
     Start([Review Triggered]) --> Load[Load Task Logs]
-    Load --> Patterns[Detect Patterns]
+    Load --> Agents[Run Agent Outer Loops]
+    Agents --> TA[Task Agent]
+    Agents --> CA[Context Agent]
+    TA --> Patterns[Detect Patterns]
+    CA --> CtxMetrics[Analyze Context Usage]
     Patterns --> Consolidate[Consolidate Learnings]
-    Consolidate --> Guidelines[Update Guidelines]
-    Guidelines --> Proposals[Generate Proposals]
-    Proposals --> Digest[Generate Digest]
+    CtxMetrics --> CtxProposals[Context Proposals]
+    Consolidate --> AllProposals[Collect Proposals]
+    CtxProposals --> AllProposals
+    AllProposals --> Review{Review Mode?}
+    Review --> |"Interactive"| IR[Interactive Reviewer]
+    Review --> |"Auto"| AutoApply[Auto-Apply Guidelines]
+    Review --> |"Non-Interactive"| Pending[Save to Pending]
+    IR --> Digest[Generate Digest]
+    AutoApply --> Digest
+    Pending --> Digest
     Digest --> Notify[Send Notifications]
     Notify --> Done([Complete])
 
-    subgraph "Auto-Applied"
-        Guidelines
+    subgraph "Task Agent"
+        TA
+        Patterns
+        Consolidate
     end
 
-    subgraph "Requires Approval"
-        Proposals
+    subgraph "Context Agent"
+        CA
+        CtxMetrics
+        CtxProposals
     end
 ```
+
+## Multi-Agent Outer Loop
+
+The outer loop runs each registered agent's analysis in sequence:
+
+```mermaid
+sequenceDiagram
+    participant OL as Outer Loop
+    participant TA as Task Agent
+    participant CA as Context Agent
+    participant IR as Interactive Reviewer
+
+    OL->>TA: runOuterLoop(lookbackDays)
+    TA-->>OL: patterns, proposals, metrics
+
+    OL->>CA: runOuterLoop(lookbackDays)
+    CA-->>OL: context proposals, metrics
+
+    OL->>OL: Combine all proposals
+
+    alt Interactive Mode
+        OL->>IR: review(proposals)
+        IR-->>OL: approved, rejected, skipped
+    else Auto Mode
+        OL->>OL: Auto-apply guidelines
+    end
+```
+
+**Agent Contributions:**
+
+| Agent | Analyzes | Proposes |
+|-------|----------|----------|
+| Task Agent | Task logs, patterns, learnings | Coding/testing guidelines, criteria |
+| Context Agent | Context usage metrics | Context guidelines, context-quality criteria |
 
 ## Triggering the Outer Loop
 
@@ -288,14 +337,32 @@ flowchart TB
 flowchart LR
     subgraph "Proposal"
         ID[Unique ID]
-        Type[Type: criteria]
+        Source[Source: task-agent / context-agent]
+        Type[Type: guideline / criteria]
         Target[Target File]
         Change[Proposed Change]
         Reason[Reason/Evidence]
         Confidence[Confidence Score]
-        Status[pending/approved/rejected]
+        Status[pending/approved/rejected/skipped]
+        Feedback[Human Feedback]
+        ReviewedAt[Review Timestamp]
     end
 ```
+
+**Proposal Fields:**
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier |
+| `source` | Which agent generated this (`task-agent` or `context-agent`) |
+| `type` | `guideline` (auto-approvable) or `criteria` (requires human) |
+| `targetFile` | File to modify (e.g., `guidelines/coding.md`) |
+| `change` | The proposed content (may include `APPEND:`, `REPLACE:`, `PREPEND:`) |
+| `reason` | Why this change is suggested |
+| `confidence` | 0-1 score based on evidence |
+| `status` | `pending`, `approved`, `rejected`, or `skipped` |
+| `humanFeedback` | Notes from reviewer (if rejected or edited) |
+| `reviewedAt` | When the proposal was reviewed |
 
 ## Digest Generation
 
@@ -456,14 +523,102 @@ outerLoop:
 ## CLI Usage
 
 ```bash
-# Run outer loop review
+# Run outer loop review (interactive)
 ophan review
 
 # Force run even if threshold not reached
 ophan review --force
 
+# Auto-approve guideline changes (criteria still need approval)
+ophan review --auto
+
+# Skip interactive review, save proposals to pending
+ophan review --non-interactive
+
+# Review pending proposals from previous runs
+ophan review --pending
+
 # Run on specific project
 ophan review --project /path/to/project
+```
+
+## Interactive Review
+
+When proposals are generated, the interactive reviewer presents each one:
+
+```mermaid
+flowchart TB
+    Start([Proposals Ready]) --> Display[Display Proposal]
+    Display --> Prompt{User Action?}
+
+    Prompt --> |"Approve"| Apply[Apply Change]
+    Prompt --> |"Reject"| Feedback[Collect Feedback]
+    Prompt --> |"Edit"| Edit[Edit Proposal]
+    Prompt --> |"Skip"| Skip[Save to Pending]
+    Prompt --> |"Quit"| End([End Session])
+
+    Apply --> Next{More Proposals?}
+    Feedback --> Next
+    Edit --> Apply
+    Skip --> Next
+
+    Next --> |"Yes"| Display
+    Next --> |"No"| Summary[Show Summary]
+    Summary --> End
+```
+
+**Review Actions:**
+
+| Action | Key | Description |
+|--------|-----|-------------|
+| Approve | `A` | Apply the proposal as-is |
+| Reject | `R` | Decline with feedback (for learning) |
+| Edit | `E` | Modify the proposal before applying |
+| Skip | `S` | Save to pending for later review |
+| Quit | `Q` | End review session, remaining saved to pending |
+
+**Review Modes:**
+
+| Mode | Flag | Behavior |
+|------|------|----------|
+| Interactive | (default) | Review each proposal one by one |
+| Auto | `--auto` | Auto-approve guidelines, prompt for criteria |
+| Non-Interactive | `--non-interactive` | Skip all, save to pending |
+
+## Context Agent Analysis
+
+The Context Agent analyzes context usage metrics during the outer loop:
+
+```mermaid
+flowchart TB
+    Logs[Context Usage Logs] --> Aggregate[Aggregate Metrics]
+
+    Aggregate --> HitRate{Hit Rate < 70%?}
+    Aggregate --> MissRate{Miss Rate > 20%?}
+
+    HitRate --> |"Yes"| Unused[Identify Unused Files]
+    MissRate --> |"Yes"| Missed[Identify Missed Files]
+
+    Unused --> Proposal1[Propose: Exclude Files]
+    Missed --> Proposal2[Propose: Add Files]
+
+    Proposal1 --> AllProposals[All Context Proposals]
+    Proposal2 --> AllProposals
+```
+
+**Context Metrics:**
+
+| Metric | Target | Action if Failing |
+|--------|--------|-------------------|
+| Hit Rate | >70% | Propose removing unused files from context |
+| Miss Rate | <20% | Propose adding commonly needed files |
+
+View context statistics with:
+
+```bash
+ophan context-stats
+ophan context-stats --days 7
+ophan context-stats --json
 ```
 
 ## Next Steps

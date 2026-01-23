@@ -76,11 +76,14 @@ my-project/
 │   ├── guidelines/             # Agent CAN edit
 │   │   ├── coding.md
 │   │   ├── testing.md
+│   │   ├── context.md          # Context compilation patterns
 │   │   └── learnings.md
 │   ├── criteria/               # Agent CANNOT edit (protected)
 │   │   ├── quality.md
-│   │   └── security.md
+│   │   ├── security.md
+│   │   └── context-quality.md  # Context agent metrics
 │   ├── logs/                   # Task execution logs
+│   ├── context-logs/           # Context usage logs
 │   ├── digests/                # Outer loop reports
 │   └── state.json              # Runtime state
 └── [your project files]
@@ -148,6 +151,7 @@ escalations:
 | `ophan logs` | View recent task logs |
 | `ophan ui` | Open web UI for configuration and monitoring |
 | `ophan approve <id>` | Approve a criteria change proposal |
+| `ophan context-stats` | View context usage statistics |
 
 ### Command Options
 
@@ -164,6 +168,14 @@ escalations:
 
 **`ophan review`**
 - `-f, --force` — Run even if task threshold not reached
+- `--auto` — Auto-approve guideline changes (criteria still require approval)
+- `--non-interactive` — Skip interactive review, save proposals to pending
+- `--pending` — Review pending proposals from previous runs
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan context-stats`**
+- `-d, --days <number>` — Number of days to analyze (default: 30)
+- `--json` — Output as JSON
 - `-p, --project <path>` — Path to the project directory
 
 **`ophan logs`**
@@ -244,14 +256,27 @@ escalations:
       events: [escalation]
 ```
 
-## Environment Variables
+## Prerequisites
+
+Ophan uses Claude Code (subscription-based) for task execution:
+
+1. Install [Claude Code](https://claude.ai/code) CLI
+2. Authenticate with your Claude subscription
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key |
 | Webhook URLs/tokens | No | As configured in `.ophan.yaml` |
 
 ## How It Works
+
+### Context Agent
+
+Ophan includes a self-improving context agent that learns which files are relevant for different tasks. After each task, it tracks:
+
+- **Hit Rate**: % of provided files that were actually used (target: >70%)
+- **Miss Rate**: % of used files that weren't provided (target: <20%)
+
+Over time, the context agent proposes updates to context guidelines based on usage patterns. View statistics with `ophan context-stats`.
 
 ### Inner Loop (Task Execution)
 

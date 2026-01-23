@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import path from 'path';
+import chalk from 'chalk';
 import { logger } from '../utils/logger.js';
 import {
   findProjectRoot,
@@ -9,16 +10,32 @@ import {
   saveState,
 } from '../utils/config.js';
 import { OuterLoop } from '../../core/outer-loop.js';
+import { InteractiveReviewer } from '../utils/interactive-reviewer.js';
+
+// Brand color: Ophan gold (#B9A46D)
+const gold = chalk.hex('#B9A46D');
 
 interface ReviewOptions {
   force?: boolean;
   project?: string;
+  auto?: boolean;
+  nonInteractive?: boolean;
+  pending?: boolean;
 }
 
 export const reviewCommand = new Command('review')
-  .description('Run the outer loop (pattern detection and proposals)')
+  .description('Run the outer loop and review proposals interactively')
   .option('-f, --force', 'Run even if task threshold not reached')
   .option('-p, --project <path>', 'Path to the project directory')
+  .option(
+    '--auto',
+    'Auto-approve guideline changes (criteria still require approval)'
+  )
+  .option(
+    '--non-interactive',
+    'Skip interactive review, save proposals to pending'
+  )
+  .option('--pending', 'Review pending proposals from previous runs')
   .action(async (options: ReviewOptions) => {
     try {
       await runReview(options);
@@ -48,6 +65,14 @@ async function runReview(options: ReviewOptions): Promise<void> {
 
   const config = loadConfig(projectRoot);
   const state = loadState(projectRoot);
+  const ophanDir = path.join(projectRoot, '.ophan');
+  const projectName = path.basename(projectRoot);
+
+  // If --pending, just review pending proposals
+  if (options.pending) {
+    await reviewPendingProposals(projectRoot, state, options);
+    return;
+  }
 
   // Check if review is needed
   if (
@@ -58,10 +83,24 @@ async function runReview(options: ReviewOptions): Promise<void> {
       `Only ${state.tasksSinceReview} tasks since last review (threshold: ${config.outerLoop.triggers.afterTasks}).`
     );
     logger.info('Use --force to run anyway.');
+
+    // If there are pending proposals, offer to review them
+    if (state.pendingProposals.length > 0) {
+      logger.blank();
+      logger.info(
+        `${state.pendingProposals.length} pending proposal(s) from previous reviews.`
+      );
+      logger.info('Run `ophan review --pending` to review them.');
+    }
     return;
   }
 
-  logger.section('Outer Loop Review');
+  // Display header
+  console.log();
+  console.log(gold.bold('Outer Loop Review'));
+  console.log(gold('═'.repeat(40)));
+  console.log();
+
   logger.keyValue('Tasks since review', state.tasksSinceReview.toString());
   logger.keyValue('Lookback days', config.outerLoop.lookbackDays.toString());
   logger.keyValue(
@@ -73,10 +112,15 @@ async function runReview(options: ReviewOptions): Promise<void> {
     `${(config.outerLoop.minConfidence * 100).toFixed(0)}%`
   );
 
-  logger.blank();
+  if (options.auto) {
+    logger.keyValue('Mode', chalk.yellow('Auto-approve guidelines'));
+  } else if (options.nonInteractive) {
+    logger.keyValue('Mode', chalk.yellow('Non-interactive'));
+  } else {
+    logger.keyValue('Mode', chalk.green('Interactive'));
+  }
 
-  const ophanDir = path.join(projectRoot, '.ophan');
-  const projectName = path.basename(projectRoot);
+  logger.blank();
 
   // Create and run the outer loop
   const outerLoop = new OuterLoop({
@@ -90,22 +134,19 @@ async function runReview(options: ReviewOptions): Promise<void> {
     },
   });
 
-  const result = await outerLoop.execute();
+  // Run outer loop - auto-apply guidelines only in --auto mode
+  const result = await outerLoop.execute({
+    autoApplyGuidelines: options.auto,
+  });
 
-  // Update state
+  // Update state with review timestamp
   state.lastReview = new Date().toISOString();
   state.tasksSinceReview = 0;
-  state.pendingProposals = [
-    ...state.pendingProposals,
-    ...result.proposalsGenerated,
-  ];
   state.metrics.patternsDetected += result.patternsDetected.length;
 
-  saveState(projectRoot, state);
-
-  // Display summary
+  // Display outer loop summary
   logger.blank();
-  logger.section('Review Complete');
+  logger.section('Analysis Complete');
 
   logger.keyValue('Patterns detected', result.patternsDetected.length.toString());
   logger.keyValue(
@@ -127,22 +168,134 @@ async function runReview(options: ReviewOptions): Promise<void> {
 
   if (result.guidelinesUpdated.length > 0) {
     logger.blank();
-    logger.info('Guidelines updated:');
+    logger.info('Guidelines auto-updated:');
     for (const file of result.guidelinesUpdated) {
       logger.listItem(file);
     }
   }
 
+  // Handle proposals based on mode
   if (result.proposalsGenerated.length > 0) {
     logger.blank();
-    logger.warn(
-      `${result.proposalsGenerated.length} proposal(s) require approval.`
-    );
-    logger.info('Run `ophan approve <id>` to approve a proposal.');
+
+    if (options.nonInteractive) {
+      // Non-interactive: save all proposals to pending
+      state.pendingProposals = [
+        ...state.pendingProposals,
+        ...result.proposalsGenerated,
+      ];
+      logger.info(
+        `${result.proposalsGenerated.length} proposal(s) saved to pending reviews.`
+      );
+      logger.info('Run `ophan review --pending` to review them interactively.');
+    } else {
+      // Interactive or auto mode: review proposals
+      const reviewer = new InteractiveReviewer({
+        projectRoot,
+        autoApproveGuidelines: options.auto,
+        nonInteractive: false,
+      });
+
+      const reviewResult = await reviewer.review(result.proposalsGenerated);
+
+      // Update state based on review results
+      // Add skipped proposals to pending
+      if (reviewResult.skipped.length > 0) {
+        state.pendingProposals = [
+          ...state.pendingProposals,
+          ...reviewResult.skipped,
+        ];
+      }
+
+      // Update metrics for approved proposals
+      state.metrics.learningsPromoted += reviewResult.summary.approvedCount;
+    }
   }
+
+  saveState(projectRoot, state);
 
   if (result.digestPath) {
     logger.blank();
     logger.success(`Digest saved: ${result.digestPath}`);
+  }
+
+  // Show pending proposals count
+  if (state.pendingProposals.length > 0) {
+    logger.blank();
+    logger.info(
+      `${state.pendingProposals.length} proposal(s) pending review.`
+    );
+  }
+}
+
+/**
+ * Review pending proposals from previous runs
+ */
+async function reviewPendingProposals(
+  projectRoot: string,
+  state: ReturnType<typeof loadState>,
+  options: ReviewOptions
+): Promise<void> {
+  const pendingProposals = state.pendingProposals.filter(
+    (p) => p.status === 'pending' || p.status === 'skipped'
+  );
+
+  if (pendingProposals.length === 0) {
+    logger.info('No pending proposals to review.');
+    return;
+  }
+
+  console.log();
+  console.log(gold.bold('Pending Proposals'));
+  console.log(gold('═'.repeat(40)));
+  console.log();
+  logger.info(`${pendingProposals.length} proposal(s) pending review`);
+
+  // Group by source
+  const taskAgentProposals = pendingProposals.filter(
+    (p) => p.source === 'task-agent'
+  );
+  const contextAgentProposals = pendingProposals.filter(
+    (p) => p.source === 'context-agent'
+  );
+
+  if (taskAgentProposals.length > 0) {
+    logger.keyValue('Task Agent', taskAgentProposals.length.toString());
+  }
+  if (contextAgentProposals.length > 0) {
+    logger.keyValue('Context Agent', contextAgentProposals.length.toString());
+  }
+
+  logger.blank();
+
+  const reviewer = new InteractiveReviewer({
+    projectRoot,
+    autoApproveGuidelines: options.auto,
+    nonInteractive: options.nonInteractive,
+  });
+
+  const reviewResult = await reviewer.review(pendingProposals);
+
+  // Update state: remove reviewed proposals, keep only skipped
+  const reviewedIds = new Set([
+    ...reviewResult.approved.map((p) => p.id),
+    ...reviewResult.rejected.map((p) => p.id),
+  ]);
+
+  // Keep proposals that weren't touched in this review or were skipped
+  state.pendingProposals = state.pendingProposals.filter(
+    (p) => !reviewedIds.has(p.id)
+  );
+
+  // Update metrics
+  state.metrics.learningsPromoted += reviewResult.summary.approvedCount;
+
+  saveState(projectRoot, state);
+
+  if (state.pendingProposals.length > 0) {
+    logger.blank();
+    logger.info(
+      `${state.pendingProposals.length} proposal(s) still pending.`
+    );
   }
 }

@@ -13,53 +13,28 @@ export const WebhookConfigSchema = z.object({
 });
 
 /**
- * Execution backend configuration
+ * Claude Code execution configuration
+ * Note: Ophan uses Claude Code (subscription) as the only execution backend
  */
-export const ExecutionConfigSchema = z.object({
-  backend: z.enum(['api', 'claude-code']).default('api'),
-
-  // Settings for Claude Code backend
-  claudeCode: z
-    .object({
-      model: z.enum(['sonnet', 'opus', 'haiku']).default('sonnet'),
-      permissionMode: z
-        .enum(['default', 'acceptEdits', 'bypassPermissions'])
-        .default('acceptEdits'),
-      allowedTools: z
-        .array(z.string())
-        .default(['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep']),
-      maxTurns: z.number().int().positive().default(50),
-    })
-    .default(() => ({
-      model: 'sonnet' as const,
-      permissionMode: 'acceptEdits' as const,
-      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-      maxTurns: 50,
-    })),
+export const ClaudeCodeConfigSchema = z.object({
+  model: z.enum(['sonnet', 'opus', 'haiku']).default('sonnet'),
+  permissionMode: z
+    .enum(['default', 'acceptEdits', 'bypassPermissions'])
+    .default('acceptEdits'),
+  allowedTools: z
+    .array(z.string())
+    .default(['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep']),
+  maxTurns: z.number().int().positive().default(50),
 });
 
 export const OphanConfigSchema = z.object({
-  // Execution backend configuration
-  execution: ExecutionConfigSchema.default(() => ({
-    backend: 'api' as const,
-    claudeCode: {
-      model: 'sonnet' as const,
-      permissionMode: 'acceptEdits' as const,
-      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-      maxTurns: 50,
-    },
+  // Claude Code execution configuration
+  claudeCode: ClaudeCodeConfigSchema.default(() => ({
+    model: 'sonnet' as const,
+    permissionMode: 'acceptEdits' as const,
+    allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+    maxTurns: 50,
   })),
-
-  // Model settings (used by API backend)
-  model: z
-    .object({
-      name: z.string().default('claude-sonnet-4-20250514'),
-      maxTokens: z.number().int().positive().default(4096),
-    })
-    .default(() => ({
-      name: 'claude-sonnet-4-20250514',
-      maxTokens: 4096,
-    })),
 
   innerLoop: z
     .object({

@@ -83,6 +83,7 @@ async function runTask(
 
   logger.section('Task');
   logger.keyValue('Description', description);
+  logger.keyValue('Model', config.claudeCode?.model ?? 'sonnet');
   logger.keyValue('Max iterations', config.innerLoop.maxIterations.toString());
   logger.keyValue(
     'Regeneration strategy',
@@ -96,25 +97,18 @@ async function runTask(
     logger.info('Would execute:');
     logger.listItem('Load guidelines from .ophan/guidelines/');
     logger.listItem('Load criteria from .ophan/criteria/');
-    logger.listItem('Generate output using Claude API');
+    logger.listItem('Execute task using Claude Code');
     logger.listItem('Evaluate against criteria + dev tools');
     logger.listItem('Learn and regenerate if needed');
     logger.listItem('Log results to .ophan/logs/');
     return;
   }
 
-  // Check for ANTHROPIC_API_KEY
-  if (!process.env.ANTHROPIC_API_KEY) {
-    logger.error('ANTHROPIC_API_KEY environment variable is not set.');
-    logger.info('Set it with: export ANTHROPIC_API_KEY=your-api-key');
-    return;
-  }
-
   const ophanDir = path.join(projectRoot, '.ophan');
 
   // Load guidelines and criteria
-  const guidelines = await loadGuidelines(ophanDir);
-  const criteria = await loadCriteria(ophanDir);
+  const { content: guidelines, files: guidelineFiles } = await loadGuidelines(ophanDir);
+  const { content: criteria, files: criteriaFiles } = await loadCriteria(ophanDir);
   const learnings = await loadLearnings(ophanDir);
 
   logger.blank();
@@ -132,10 +126,13 @@ async function runTask(
   const innerLoop = new InnerLoop({
     projectRoot,
     projectName,
+    ophanDir,
     config,
     guidelines,
     criteria,
     learnings,
+    guidelineFiles,
+    criteriaFiles,
     onProgress: (message) => {
       logger.info(message);
     },
@@ -221,41 +218,50 @@ async function runTask(
   }
 }
 
-async function loadGuidelines(ophanDir: string): Promise<string> {
+async function loadGuidelines(ophanDir: string): Promise<{ content: string; files: string[] }> {
   const guidelinesDir = path.join(ophanDir, 'guidelines');
-  const files = ['coding.md', 'testing.md', 'learnings.md'];
+  const fileNames = ['coding.md', 'testing.md', 'learnings.md', 'context.md'];
   const contents: string[] = [];
+  const loadedFiles: string[] = [];
 
-  for (const file of files) {
+  for (const file of fileNames) {
     try {
-      const content = await fs.readFile(
-        path.join(guidelinesDir, file),
-        'utf-8'
-      );
+      const filePath = path.join(guidelinesDir, file);
+      const content = await fs.readFile(filePath, 'utf-8');
       contents.push(`# ${file}\n\n${content}`);
+      loadedFiles.push(filePath);
     } catch {
       // File doesn't exist, skip
     }
   }
 
-  return contents.join('\n\n---\n\n');
+  return {
+    content: contents.join('\n\n---\n\n'),
+    files: loadedFiles,
+  };
 }
 
-async function loadCriteria(ophanDir: string): Promise<string> {
+async function loadCriteria(ophanDir: string): Promise<{ content: string; files: string[] }> {
   const criteriaDir = path.join(ophanDir, 'criteria');
-  const files = ['quality.md', 'security.md'];
+  const fileNames = ['quality.md', 'security.md', 'context-quality.md'];
   const contents: string[] = [];
+  const loadedFiles: string[] = [];
 
-  for (const file of files) {
+  for (const file of fileNames) {
     try {
-      const content = await fs.readFile(path.join(criteriaDir, file), 'utf-8');
+      const filePath = path.join(criteriaDir, file);
+      const content = await fs.readFile(filePath, 'utf-8');
       contents.push(`# ${file}\n\n${content}`);
+      loadedFiles.push(filePath);
     } catch {
       // File doesn't exist, skip
     }
   }
 
-  return contents.join('\n\n---\n\n');
+  return {
+    content: contents.join('\n\n---\n\n'),
+    files: loadedFiles,
+  };
 }
 
 async function loadLearnings(ophanDir: string): Promise<string> {
