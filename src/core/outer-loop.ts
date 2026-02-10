@@ -110,6 +110,12 @@ export class OuterLoop {
       devAgent.setState(this.options.state);
     }
 
+    // Set state on OrchestratorAgent (it needs dev state for analysis and memory consolidation)
+    const orchestrator = this.registry.get('orchestrator') as OrchestratorAgent | undefined;
+    if (orchestrator) {
+      orchestrator.setState(this.options.state);
+    }
+
     // Load task logs for pattern detection and digest
     const taskLogs = await this.loadTaskLogs();
     this.log(`Loaded ${taskLogs.length} task logs`);
@@ -203,7 +209,7 @@ export class OuterLoop {
    * Load task logs from the logs directory
    */
   private async loadTaskLogs(): Promise<TaskLogEntry[]> {
-    const logsDir = path.join(this.options.ophanDir, 'logs');
+    const logsDir = path.join(this.options.ophanDir, 'agents', 'dev', 'logs');
     const lookbackDate = new Date();
     lookbackDate.setDate(
       lookbackDate.getDate() - this.options.config.outerLoop.lookbackDays
@@ -259,7 +265,7 @@ export class OuterLoop {
     guidelinesUpdated: string[],
     agentMetrics: AgentMetrics[]
   ): Promise<string> {
-    const digestsDir = path.join(this.options.ophanDir, 'digests');
+    const digestsDir = path.join(this.options.ophanDir, 'agents', 'dev', 'digests');
     await fs.mkdir(digestsDir, { recursive: true });
 
     const date = new Date().toISOString().slice(0, 10);

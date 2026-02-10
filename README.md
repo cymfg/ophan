@@ -85,7 +85,7 @@ my-project/
 ├── OPHAN.md                    # Agent entry point
 ├── .ophan.yaml                 # Configuration
 ├── .ophan/
-│   ├── guidelines/             # Agents CAN edit
+│   ├── guidelines/             # Agents CAN edit (shared)
 │   │   ├── coding.md           # Dev Agent coding patterns
 │   │   ├── testing.md          # Dev Agent testing patterns
 │   │   ├── planning.md         # Goal decomposition patterns
@@ -93,20 +93,22 @@ my-project/
 │   │   ├── learnings.md        # Accumulated learnings
 │   │   ├── orchestration.md    # Orchestrator supervision rules
 │   │   └── communication.md    # Orchestrator conversation style
-│   ├── criteria/               # Agents CANNOT edit (protected)
+│   ├── criteria/               # Agents CANNOT edit (protected, shared)
 │   │   ├── quality.md
 │   │   ├── security.md
 │   │   ├── context-quality.md
 │   │   └── orchestration-quality.md
-│   ├── goals/                  # Goal definition files (.md)
-│   ├── logs/                   # Task execution logs
-│   ├── digests/                # Outer loop reports
-│   ├── metrics/                # Performance metrics
-│   ├── orchestrator/           # Orchestrator Agent data
-│   │   ├── state.json          # Orchestrator-specific state
-│   │   ├── memory.json         # Cross-session memory (preferences, episodes)
-│   │   └── sessions/           # Conversation session logs
-│   └── state.json              # Dev Agent runtime state
+│   ├── goals/                  # Goal definition files (.md, shared)
+│   └── agents/
+│       ├── dev/                # Dev Agent data
+│       │   ├── state.json      # Dev Agent runtime state
+│       │   ├── logs/           # Task execution logs
+│       │   ├── context-logs/   # Context usage tracking
+│       │   └── digests/        # Outer loop reports
+│       └── orchestrator/       # Orchestrator Agent data
+│           ├── state.json      # Orchestrator-specific state
+│           ├── memory.json     # Cross-session memory (preferences, episodes)
+│           └── sessions/       # Conversation session logs
 └── [your project files]
 ```
 
@@ -411,7 +413,7 @@ Over time, context guidelines are updated based on usage patterns. View statisti
 3. **Learning Consolidation**: Deduplicates, promotes, and prunes learnings
 4. **Guideline Updates**: Auto-applies updates from promoted learnings
 5. **Proposal Generation**: Creates proposals for criteria changes (require approval)
-6. **Digest Generation**: Writes summary report to `.ophan/digests/`
+6. **Digest Generation**: Writes summary report to `.ophan/agents/dev/digests/`
 
 ### Pattern Types
 

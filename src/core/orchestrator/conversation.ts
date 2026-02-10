@@ -66,7 +66,7 @@ export class ConversationManager {
   private sessionsDir: string;
 
   constructor(private ophanDir: string) {
-    this.sessionsDir = path.join(ophanDir, 'orchestrator', 'sessions');
+    this.sessionsDir = path.join(ophanDir, 'agents', 'orchestrator', 'sessions');
   }
 
   /**

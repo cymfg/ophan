@@ -18,6 +18,7 @@ import { InnerLoop } from '../core/inner-loop.js';
 import { TaskLogger } from '../core/task-logger.js';
 import { ContextLogger } from '../core/context-logger.js';
 import { OuterLoop } from '../core/outer-loop.js';
+import { loadGoalFiles } from '../core/goal-parser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,6 +98,13 @@ export function createUIServer(options: UIServerOptions): UIServer {
       // Calculate metrics from state
       const metrics = await calculateMetrics(ophanDir, state);
 
+      // Goals summary
+      const activeGoals = state.goals.filter(
+        (g) => !['completed', 'abandoned'].includes(g.status)
+      ).length;
+      const completedGoals = state.goals.filter((g) => g.status === 'completed').length;
+      const goalsTotalCost = state.goals.reduce((sum, g) => sum + (g.totalCost ?? 0), 0);
+
       res.json({
         projectName,
         projectPath: projectRoot,
@@ -113,6 +121,12 @@ export function createUIServer(options: UIServerOptions): UIServer {
           lastReview: state.lastReview,
           tasksSinceReview: state.tasksSinceReview,
           pendingProposals: state.pendingProposals?.length ?? 0,
+        },
+        goals: {
+          active: activeGoals,
+          completed: completedGoals,
+          total: state.goals.length,
+          totalCost: goalsTotalCost,
         },
         metrics,
       });
@@ -158,7 +172,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const logsDir = path.join(ophanDir, 'logs');
+      const logsDir = path.join(ophanDir, 'agents', 'dev', 'logs');
       const logs = await loadTaskLogs(logsDir, limit, offset);
 
       res.json(logs);
@@ -172,7 +186,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
    */
   app.get('/api/logs/:id', async (req: Request, res: Response) => {
     try {
-      const logFile = path.join(ophanDir, 'logs', `${req.params.id}.json`);
+      const logFile = path.join(ophanDir, 'agents', 'dev', 'logs', `${req.params.id}.json`);
       const content = await fs.readFile(logFile, 'utf-8');
       res.json(JSON.parse(content));
     } catch (error) {
@@ -185,7 +199,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
    */
   app.get('/api/digests', async (_req: Request, res: Response) => {
     try {
-      const digestsDir = path.join(ophanDir, 'digests');
+      const digestsDir = path.join(ophanDir, 'agents', 'dev', 'digests');
       const digests = await loadDigests(digestsDir);
       res.json(digests);
     } catch (error) {
@@ -199,7 +213,7 @@ export function createUIServer(options: UIServerOptions): UIServer {
   app.get('/api/digests/:filename', async (req: Request, res: Response) => {
     try {
       const filename = req.params.filename as string;
-      const digestFile = path.join(ophanDir, 'digests', filename);
+      const digestFile = path.join(ophanDir, 'agents', 'dev', 'digests', filename);
       const content = await fs.readFile(digestFile, 'utf-8');
       res.json({ filename, content });
     } catch (error) {
@@ -266,6 +280,150 @@ export function createUIServer(options: UIServerOptions): UIServer {
       res.json(state.learnings ?? []);
     } catch (error) {
       res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/goals - Get goals with runtime state
+   */
+  app.get('/api/goals', async (_req: Request, res: Response) => {
+    try {
+      const goalsDir = path.join(ophanDir, 'goals');
+      const goalFiles = await loadGoalFiles(goalsDir);
+      const state = loadState(projectRoot);
+
+      const goals = goalFiles.map((gf) => {
+        const gs = state.goals.find((g) => g.goalId === gf.id);
+        const completedTasks = gs?.tasks.filter((t) => t.status === 'converged').length ?? 0;
+        return {
+          id: gf.id,
+          title: gf.title,
+          description: gf.description,
+          priority: gf.priority,
+          tags: gf.tags,
+          dependsOn: gf.dependsOn,
+          acceptanceCriteria: gf.acceptanceCriteria,
+          status: gs?.status ?? 'pending',
+          tasks: gs?.tasks ?? [],
+          taskProgress: gs ? `${completedTasks}/${gs.tasks.length}` : 'no tasks',
+          totalCost: gs?.totalCost ?? 0,
+          startedAt: gs?.startedAt,
+          completedAt: gs?.completedAt,
+        };
+      });
+
+      // Include goals in state but not in files (deleted/orphaned)
+      for (const gs of state.goals) {
+        if (!goalFiles.find((gf) => gf.id === gs.goalId)) {
+          const completedTasks = gs.tasks.filter((t) => t.status === 'converged').length;
+          goals.push({
+            id: gs.goalId,
+            title: gs.goalId,
+            description: '',
+            priority: 5,
+            tags: [],
+            dependsOn: [],
+            acceptanceCriteria: [],
+            status: gs.status,
+            tasks: gs.tasks,
+            taskProgress: `${completedTasks}/${gs.tasks.length}`,
+            totalCost: gs.totalCost,
+            startedAt: gs.startedAt,
+            completedAt: gs.completedAt,
+          });
+        }
+      }
+
+      res.json(goals);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/orchestrator/status - Get orchestrator agent status
+   */
+  app.get('/api/orchestrator/status', async (_req: Request, res: Response) => {
+    try {
+      const statePath = path.join(ophanDir, 'agents', 'orchestrator', 'state.json');
+      const content = await fs.readFile(statePath, 'utf-8');
+      res.json(JSON.parse(content));
+    } catch {
+      res.json({
+        version: '0.1.0',
+        goalsCreated: 0,
+        guidelinesUpdated: 0,
+        conversationsHandled: 0,
+        proactiveAlertsSent: 0,
+        supervisedGoalCompletionRate: 0,
+        supervisedGoalIds: [],
+        recentAlerts: [],
+      });
+    }
+  });
+
+  /**
+   * GET /api/orchestrator/sessions - List orchestrator conversation sessions
+   */
+  app.get('/api/orchestrator/sessions', async (_req: Request, res: Response) => {
+    try {
+      const sessionsDir = path.join(ophanDir, 'agents', 'orchestrator', 'sessions');
+      const files = await fs.readdir(sessionsDir);
+      const sessionFiles = files
+        .filter((f) => f.endsWith('.json'))
+        .sort()
+        .reverse()
+        .slice(0, 50);
+
+      const sessions = [];
+      for (const file of sessionFiles) {
+        try {
+          const content = await fs.readFile(path.join(sessionsDir, file), 'utf-8');
+          const session = JSON.parse(content);
+          const firstUserMsg = session.messages?.find((m: { role: string }) => m.role === 'user');
+          sessions.push({
+            id: session.id,
+            startedAt: session.startedAt,
+            lastActiveAt: session.lastActiveAt,
+            messageCount: session.messages?.length ?? 0,
+            preview: firstUserMsg?.content?.slice(0, 100) ?? '',
+          });
+        } catch {
+          // Skip invalid session files
+        }
+      }
+
+      res.json(sessions);
+    } catch {
+      res.json([]);
+    }
+  });
+
+  /**
+   * GET /api/orchestrator/sessions/:id - Get full session by ID
+   */
+  app.get('/api/orchestrator/sessions/:id', async (req: Request, res: Response) => {
+    try {
+      const sessionFile = path.join(
+        ophanDir, 'agents', 'orchestrator', 'sessions', `${req.params.id}.json`
+      );
+      const content = await fs.readFile(sessionFile, 'utf-8');
+      res.json(JSON.parse(content));
+    } catch {
+      res.status(404).json({ error: 'Session not found' });
+    }
+  });
+
+  /**
+   * GET /api/orchestrator/memory - Get orchestrator memory
+   */
+  app.get('/api/orchestrator/memory', async (_req: Request, res: Response) => {
+    try {
+      const memoryPath = path.join(ophanDir, 'agents', 'orchestrator', 'memory.json');
+      const content = await fs.readFile(memoryPath, 'utf-8');
+      res.json(JSON.parse(content));
+    } catch {
+      res.json({ preferences: [], episodes: [], patterns: [] });
     }
   });
 
@@ -739,7 +897,7 @@ async function calculateMetrics(
   ophanDir: string,
   state: OphanStateOutput
 ): Promise<Record<string, unknown>> {
-  const logsDir = path.join(ophanDir, 'logs');
+  const logsDir = path.join(ophanDir, 'agents', 'dev', 'logs');
 
   try {
     const files = await fs.readdir(logsDir);

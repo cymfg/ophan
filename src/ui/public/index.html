@@ -17,9 +17,9 @@
       </div>
       <ul class="nav-links">
         <li><a href="#" data-page="dashboard" class="active">Dashboard</a></li>
-        <li><a href="#" data-page="run-task">Run Task</a></li>
-        <li><a href="#" data-page="logs">Task Logs</a></li>
+        <li><a href="#" data-page="goals">Goals</a></li>
         <li><a href="#" data-page="proposals">Proposals</a></li>
+        <li><a href="#" data-page="orchestrator">Orchestrator</a></li>
         <li><a href="#" data-page="context-stats">Context Stats</a></li>
         <li><a href="#" data-page="config">Configuration</a></li>
         <li><a href="#" data-page="guidelines">Guidelines</a></li>
@@ -35,88 +35,6 @@
 
     <!-- Main Content -->
     <main class="content">
-      <!-- Run Task Page -->
-      <section id="page-run-task" class="page">
-        <header class="page-header">
-          <h2>Run Task</h2>
-        </header>
-
-        <div class="card">
-          <div class="task-runner" id="taskRunner">
-            <div class="task-input-section" id="taskInputSection">
-              <div class="form-group">
-                <label for="taskDescription">Task Description</label>
-                <textarea id="taskDescription" rows="4" placeholder="Describe the task you want Ophan to perform..."></textarea>
-              </div>
-              <button class="btn btn-primary" id="runTaskBtn">Run Task</button>
-            </div>
-
-            <div class="task-running-section" id="taskRunningSection" style="display: none;">
-              <div class="task-status-header">
-                <div class="task-status-indicator">
-                  <span class="spinner"></span>
-                  <span id="taskStatusText">Starting task...</span>
-                </div>
-                <button class="btn btn-danger" id="cancelTaskBtn">Cancel</button>
-              </div>
-
-              <div class="task-progress">
-                <div class="progress-bar">
-                  <div class="progress-fill" id="progressFill" style="width: 0%"></div>
-                </div>
-                <div class="progress-text">
-                  <span id="iterationCount">Iteration 0</span>
-                  <span id="maxIterations">/ 5</span>
-                </div>
-              </div>
-
-              <div class="task-details">
-                <div class="summary-item">
-                  <span class="summary-label">Task</span>
-                  <span class="summary-value" id="runningTaskDesc">-</span>
-                </div>
-                <div class="summary-item">
-                  <span class="summary-label">Status</span>
-                  <span class="summary-value" id="runningTaskStatus">Starting...</span>
-                </div>
-              </div>
-
-              <div class="task-log" id="taskLog">
-                <h4>Progress Log</h4>
-                <div class="log-entries" id="logEntries"></div>
-              </div>
-            </div>
-
-            <div class="task-result-section" id="taskResultSection" style="display: none;">
-              <div class="task-result" id="taskResult">
-                <div class="result-header">
-                  <span class="result-icon" id="resultIcon"></span>
-                  <h3 id="resultTitle">Task Complete</h3>
-                </div>
-                <div class="result-details">
-                  <div class="summary-item">
-                    <span class="summary-label">Status</span>
-                    <span class="summary-value" id="finalStatus">-</span>
-                  </div>
-                  <div class="summary-item">
-                    <span class="summary-label">Iterations</span>
-                    <span class="summary-value" id="finalIterations">-</span>
-                  </div>
-                  <div class="summary-item">
-                    <span class="summary-label">Cost</span>
-                    <span class="summary-value" id="finalCost">-</span>
-                  </div>
-                </div>
-                <div class="result-actions">
-                  <button class="btn btn-primary" id="newTaskBtn">Run Another Task</button>
-                  <button class="btn btn-secondary" id="viewLogsBtn">View in Logs</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- Dashboard Page -->
       <section id="page-dashboard" class="page active">
         <header class="page-header">
@@ -190,6 +108,27 @@
         </div>
 
         <div class="card">
+          <h3>Goals Overview</h3>
+          <div class="goals-overview">
+            <div class="summary-item">
+              <span class="summary-label">Active Goals</span>
+              <span class="summary-value" id="dashActiveGoals">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Completed</span>
+              <span class="summary-value success" id="dashCompletedGoals">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Goal Cost</span>
+              <span class="summary-value" id="dashGoalsCost">-</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a href="#" data-page="goals" class="btn btn-secondary nav-link-btn">View Goals</a>
+          </div>
+        </div>
+
+        <div class="card">
           <h3>Agent Metrics</h3>
           <div class="agent-metrics-grid" id="agentMetricsGrid">
             <div class="agent-card">
@@ -223,6 +162,23 @@
                 <div class="metric-item">
                   <span class="metric-name">Tasks Analyzed</span>
                   <span class="metric-value" id="contextAgentTasksAnalyzed">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="agent-card">
+              <h4>Orchestrator</h4>
+              <div class="agent-metrics" id="orchestratorAgentMetrics">
+                <div class="metric-item">
+                  <span class="metric-name">Goals Created</span>
+                  <span class="metric-value" id="orchAgentGoalsCreated">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Conversations</span>
+                  <span class="metric-value" id="orchAgentConversations">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-name">Completion Rate</span>
+                  <span class="metric-value" id="orchAgentCompletionRate">-</span>
                 </div>
               </div>
             </div>
@@ -262,46 +218,6 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Logs Page -->
-      <section id="page-logs" class="page">
-        <header class="page-header">
-          <h2>Task Logs</h2>
-          <button class="btn btn-secondary" id="refreshLogs">Refresh</button>
-        </header>
-
-        <div class="card">
-          <table class="logs-table">
-            <thead>
-              <tr>
-                <th>Task ID</th>
-                <th>Description</th>
-                <th>Status</th>
-                <th>Iterations</th>
-                <th>Cost</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody id="logsTableBody">
-              <tr>
-                <td colspan="6" class="loading">Loading logs...</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="pagination" id="logsPagination"></div>
-        </div>
-
-        <!-- Log Detail Modal -->
-        <div class="modal" id="logDetailModal">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h3>Task Details</h3>
-              <button class="modal-close" id="closeLogDetail">&times;</button>
-            </div>
-            <div class="modal-body" id="logDetailContent"></div>
           </div>
         </div>
       </section>
@@ -511,6 +427,122 @@
         <div class="card" id="digestContent" style="display: none;">
           <div class="digest-viewer">
             <pre id="digestText"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Goals Page -->
+      <section id="page-goals" class="page">
+        <header class="page-header">
+          <h2>Goals</h2>
+          <button class="btn btn-secondary" id="refreshGoals">Refresh</button>
+        </header>
+
+        <div class="metrics-grid" id="goalSummaryMetrics">
+          <div class="metric-card">
+            <div class="metric-value" id="goalsActive">-</div>
+            <div class="metric-label">Active</div>
+          </div>
+          <div class="metric-card success">
+            <div class="metric-value" id="goalsCompleted">-</div>
+            <div class="metric-label">Completed</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="goalsPending">-</div>
+            <div class="metric-label">Pending</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="goalsTotalCost">-</div>
+            <div class="metric-label">Total Cost</div>
+          </div>
+        </div>
+
+        <div class="goals-list" id="goalsList">
+          <div class="loading">Loading goals...</div>
+        </div>
+
+        <!-- Goal Detail Modal -->
+        <div class="modal" id="goalDetailModal">
+          <div class="modal-content modal-large">
+            <div class="modal-header">
+              <h3 id="goalDetailTitle">Goal Details</h3>
+              <button class="modal-close" id="closeGoalDetail">&times;</button>
+            </div>
+            <div class="modal-body" id="goalDetailContent"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Orchestrator Page -->
+      <section id="page-orchestrator" class="page">
+        <header class="page-header">
+          <h2>Orchestrator</h2>
+          <button class="btn btn-secondary" id="refreshOrchestrator">Refresh</button>
+        </header>
+
+        <div class="metrics-grid" id="orchStatusMetrics">
+          <div class="metric-card">
+            <div class="metric-value" id="orchGoalsCreated">-</div>
+            <div class="metric-label">Goals Created</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="orchGuidelinesUpdated">-</div>
+            <div class="metric-label">Guidelines Updated</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="orchConversations">-</div>
+            <div class="metric-label">Conversations</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="orchCompletionRate">-</div>
+            <div class="metric-label">Goal Completion Rate</div>
+          </div>
+        </div>
+
+        <div class="cards-row">
+          <div class="card">
+            <h3>Recent Sessions</h3>
+            <div class="sessions-list" id="orchSessionsList">
+              <div class="loading">Loading sessions...</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Daemon Status</h3>
+            <div class="daemon-status">
+              <div class="summary-item">
+                <span class="summary-label">Last Check</span>
+                <span class="summary-value" id="orchLastCheck">Never</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Proactive Alerts</span>
+                <span class="summary-value" id="orchAlertCount">0</span>
+              </div>
+            </div>
+            <div id="orchAlertsList"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Memory</h3>
+          <div class="tabs">
+            <button class="tab active" data-memory-tab="preferences">Preferences</button>
+            <button class="tab" data-memory-tab="episodes">Episodes</button>
+            <button class="tab" data-memory-tab="patterns">Patterns</button>
+          </div>
+          <div id="memoryContent">
+            <div class="loading">Loading memory...</div>
+          </div>
+        </div>
+
+        <!-- Session Detail Modal -->
+        <div class="modal" id="sessionDetailModal">
+          <div class="modal-content modal-large">
+            <div class="modal-header">
+              <h3>Conversation Session</h3>
+              <button class="modal-close" id="closeSessionDetail">&times;</button>
+            </div>
+            <div class="modal-body" id="sessionDetailContent"></div>
           </div>
         </div>
       </section>

@@ -15,7 +15,7 @@ export class TaskLogger {
 
   constructor(options: TaskLoggerOptions) {
     this.ophanDir = options.ophanDir;
-    this.logsDir = path.join(options.ophanDir, 'logs');
+    this.logsDir = path.join(options.ophanDir, 'agents', 'dev', 'logs');
   }
 
   /**

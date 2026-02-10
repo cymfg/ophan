@@ -24,7 +24,7 @@ export const ClaudeCodeConfigSchema = z.object({
   allowedTools: z
     .array(z.string())
     .default(['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep']),
-  maxTurns: z.number().int().positive().default(50),
+  maxTurns: z.number().int().positive().default(25),
 });
 
 export const OphanConfigSchema = z.object({
@@ -33,7 +33,7 @@ export const OphanConfigSchema = z.object({
     model: 'sonnet' as const,
     permissionMode: 'acceptEdits' as const,
     allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-    maxTurns: 50,
+    maxTurns: 25,
   })),
 
   innerLoop: z

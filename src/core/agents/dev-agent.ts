@@ -659,7 +659,9 @@ export class DevAgent extends AbstractAgent implements ExecutableAgent {
     this.state.lastPlanningRun = new Date().toISOString();
 
     // Write state.json
-    const statePath = path.join(this.ophanDir, 'state.json');
+    const stateDir = path.join(this.ophanDir, 'agents', 'dev');
+    await fs.mkdir(stateDir, { recursive: true });
+    const statePath = path.join(stateDir, 'state.json');
     await fs.writeFile(statePath, JSON.stringify(this.state, null, 2), 'utf-8');
   }
 
@@ -667,7 +669,7 @@ export class DevAgent extends AbstractAgent implements ExecutableAgent {
    * Load task logs from the logs directory
    */
   private async loadTaskLogs(lookbackDays: number): Promise<TaskLogEntry[]> {
-    const logsDir = path.join(this.ophanDir, 'logs');
+    const logsDir = path.join(this.ophanDir, 'agents', 'dev', 'logs');
     const lookbackDate = new Date();
     lookbackDate.setDate(lookbackDate.getDate() - lookbackDays);
 

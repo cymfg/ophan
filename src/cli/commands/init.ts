@@ -123,19 +123,15 @@ async function runInit(options: InitOptions): Promise<void> {
     const paths = getOphanPaths(projectRoot);
 
     // Create directories
-    const goalsDir = join(paths.stateDir, 'goals');
-    const orchestratorDir = join(paths.stateDir, 'orchestrator');
-    const sessionsDir = join(orchestratorDir, 'sessions');
     for (const dir of [
       paths.stateDir,
       paths.guidelines,
       paths.criteria,
-      paths.logs,
-      paths.digests,
-      paths.metrics,
-      goalsDir,
-      orchestratorDir,
-      sessionsDir,
+      paths.goals,
+      paths.devAgent.logs,
+      paths.devAgent.contextLogs,
+      paths.devAgent.digests,
+      paths.orchestrator.sessions,
     ]) {
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
@@ -178,7 +174,7 @@ async function runInit(options: InitOptions): Promise<void> {
     logger.section('Created Files');
     logger.success('OPHAN.md');
     logger.success('.ophan.yaml');
-    logger.success('.ophan/state.json');
+    logger.success('.ophan/agents/dev/state.json');
     for (const filename of Object.keys(guidelineFiles)) {
       logger.success(`.ophan/guidelines/${filename}`);
     }
@@ -186,6 +182,10 @@ async function runInit(options: InitOptions): Promise<void> {
       logger.success(`.ophan/criteria/${filename}`);
     }
     logger.success('.ophan/goals/');
+    logger.success('.ophan/agents/dev/logs/');
+    logger.success('.ophan/agents/dev/context-logs/');
+    logger.success('.ophan/agents/dev/digests/');
+    logger.success('.ophan/agents/orchestrator/sessions/');
 
     logger.blank();
     logger.info('Add a goal with: ophan goals add "your first goal"');

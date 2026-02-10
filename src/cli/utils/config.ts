@@ -88,10 +88,10 @@ export function saveConfig(
 }
 
 /**
- * Load the Ophan state
+ * Load the Ophan state (dev agent state)
  */
 export function loadState(projectRoot: string): OphanStateOutput {
-  const statePath = join(projectRoot, STATE_DIR, STATE_FILENAME);
+  const statePath = join(projectRoot, STATE_DIR, 'agents', 'dev', STATE_FILENAME);
 
   if (!existsSync(statePath)) {
     return createInitialState();
@@ -110,10 +110,10 @@ export function loadState(projectRoot: string): OphanStateOutput {
 }
 
 /**
- * Save the Ophan state
+ * Save the Ophan state (dev agent state)
  */
 export function saveState(projectRoot: string, state: OphanStateOutput): void {
-  const stateDir = join(projectRoot, STATE_DIR);
+  const stateDir = join(projectRoot, STATE_DIR, 'agents', 'dev');
   const statePath = join(stateDir, STATE_FILENAME);
 
   if (!existsSync(stateDir)) {
@@ -158,14 +158,23 @@ function interpolateEnvVars(obj: unknown): unknown {
  * Get paths for Ophan directories
  */
 export function getOphanPaths(projectRoot: string) {
+  const stateDir = join(projectRoot, STATE_DIR);
   return {
     config: join(projectRoot, CONFIG_FILENAME),
-    stateDir: join(projectRoot, STATE_DIR),
-    state: join(projectRoot, STATE_DIR, STATE_FILENAME),
-    guidelines: join(projectRoot, STATE_DIR, 'guidelines'),
-    criteria: join(projectRoot, STATE_DIR, 'criteria'),
-    logs: join(projectRoot, STATE_DIR, 'logs'),
-    digests: join(projectRoot, STATE_DIR, 'digests'),
-    metrics: join(projectRoot, STATE_DIR, 'metrics'),
+    stateDir,
+    guidelines: join(stateDir, 'guidelines'),
+    criteria: join(stateDir, 'criteria'),
+    goals: join(stateDir, 'goals'),
+    devAgent: {
+      state: join(stateDir, 'agents', 'dev', STATE_FILENAME),
+      logs: join(stateDir, 'agents', 'dev', 'logs'),
+      contextLogs: join(stateDir, 'agents', 'dev', 'context-logs'),
+      digests: join(stateDir, 'agents', 'dev', 'digests'),
+    },
+    orchestrator: {
+      state: join(stateDir, 'agents', 'orchestrator', STATE_FILENAME),
+      sessions: join(stateDir, 'agents', 'orchestrator', 'sessions'),
+      memory: join(stateDir, 'agents', 'orchestrator', 'memory.json'),
+    },
   };
 }

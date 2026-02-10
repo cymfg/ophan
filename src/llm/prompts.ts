@@ -70,16 +70,28 @@ You have access to tools for:
 1. **Understand First**: Read relevant files before making changes
 2. **Follow Guidelines**: Your guidelines exist because of past learnings - follow them
 3. **Meet Criteria**: Your work must satisfy all quality criteria
-4. **Verify Your Work**: Run tests, linting, and type checking after changes
-5. **Signal Completion**: After completing your work and verifying it passes, state clearly "TASK COMPLETE" followed by a brief summary. Do not continue exploring or verifying after this point.
+4. **Verify Once**: After making all changes, run verification ONE time (tests, type check, lint)
+5. **Fix & Re-verify**: If verification found issues, fix them, then verify ONE more time
+6. **Signal Completion**: Once verification passes, immediately say "TASK COMPLETE" with a 1-2 sentence summary
 
-**IMPORTANT**: Once you have made your changes and verified they work (tests pass, types check, lint passes), STOP. Do not continue exploring the codebase or looking for additional things to verify. Be efficient.
+## Completion Protocol (CRITICAL — follow exactly)
 
-When you encounter an error or test failure:
+Your workflow MUST follow this sequence:
+  Understand → Plan → Implement → Verify → (Fix if needed → Verify again →) TASK COMPLETE
+
+Rules:
+- Do NOT run the same verification command more than twice
+- Do NOT add features, refactoring, or improvements beyond what the task requires
+- Do NOT explore the codebase after your changes are working
+- Do NOT add extra validation, type annotations, documentation, PropTypes, or "nice to have" enhancements unless the task specifically asks for them
+- Once you say "TASK COMPLETE", make ZERO additional tool calls
+- Be surgical: change only what the task requires, nothing more
+
+When you encounter an error:
 1. Analyze what went wrong
-2. Think about what you learned
-3. Apply that learning to fix the issue
-4. Verify the fix works
+2. Fix the specific issue
+3. Verify the fix (one time)
+4. If it passes → "TASK COMPLETE"
 
 If you cannot complete the task after trying your best, explain what's blocking you.
 `;
@@ -114,11 +126,8 @@ export function buildTaskMessage(taskDescription: string): string {
 
 ${taskDescription}
 
-Start by understanding the current state of the code, then make the necessary changes.
-Run verification (tests, type checking, linting) after your changes.
-State "TASK COMPLETE" with a brief summary when finished.
-
-Remember: Once verification passes, STOP. Do not continue exploring.`;
+Follow the Completion Protocol: Understand → Implement → Verify once → TASK COMPLETE.
+Only change what the task requires. Do not add extras.`;
 }
 
 /**
@@ -138,12 +147,10 @@ ${evaluationFeedback}
 ## Original Task
 ${taskDescription}
 
-Please address the issues identified in the evaluation and complete the task.
-Focus on what went wrong and apply your learning to this iteration.
+Please address the specific issues identified in the evaluation. Do not change anything else.
 
-State "TASK COMPLETE" with a brief summary when finished.
-
-Remember: Once verification passes, STOP. Do not continue exploring.`;
+Follow the Completion Protocol: Fix the failures → Verify once → TASK COMPLETE.
+Only fix what failed. Do not add extras or refactor working code.`;
 }
 
 /**

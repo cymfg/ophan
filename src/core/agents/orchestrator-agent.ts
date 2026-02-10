@@ -167,6 +167,28 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     this.devAgentState = state;
   }
 
+  /**
+   * Reload the DevAgent state from disk.
+   * Called before every processMessage() so the orchestrator
+   * always sees the latest state, even if ophan dev ran concurrently.
+   * Also refreshes the session context so status queries reflect reality.
+   */
+  private async reloadDevAgentState(): Promise<void> {
+    const statePath = path.join(this.options!.ophanDir, 'agents', 'dev', 'state.json');
+    try {
+      const content = await fs.readFile(statePath, 'utf-8');
+      this.devAgentState = JSON.parse(content) as OphanState;
+
+      // Refresh session context to match current state
+      if (this.session && this.conversationManager) {
+        this.session.context =
+          await this.conversationManager.buildSessionContext(this.devAgentState);
+      }
+    } catch {
+      // State file doesn't exist yet — leave current state as-is
+    }
+  }
+
   // =========================================================================
   // Conversation
   // =========================================================================
@@ -238,6 +260,9 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     this.stopProactiveMode();
     if (this.session) {
       await this.memoryManager!.distillSession(this.session);
+      // Always save memory — distillSession may skip (short session) or fail,
+      // but preferences recorded during processMessage() still need persisting
+      await this.memoryManager!.save();
       await this.conversationManager!.saveSession(this.session);
     }
     // Save state hash for daemon delta detection
@@ -270,6 +295,9 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     if (!this.session) {
       throw new Error('No active session. Call startConversation() first.');
     }
+
+    // 0. Reload dev agent state from disk (it may have changed since last message)
+    await this.reloadDevAgentState();
 
     // 1. Handle slash commands
     const commandResponse = this.handleCommand(message);
@@ -962,7 +990,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
   }
 
   private async loadRecentSessions(): Promise<ConversationSession[]> {
-    const sessionsDir = path.join(this.ophanDir, 'orchestrator', 'sessions');
+    const sessionsDir = path.join(this.ophanDir, 'agents', 'orchestrator', 'sessions');
     try {
       const files = await fs.readdir(sessionsDir);
       const sessionFiles = files
@@ -996,6 +1024,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
   private async loadOrchestratorState(): Promise<OrchestratorState> {
     const statePath = path.join(
       this.ophanDir,
+      'agents',
       'orchestrator',
       'state.json'
     );
@@ -1011,7 +1040,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
   private async saveOrchestratorState(): Promise<void> {
     if (!this.orchestratorState) return;
 
-    const stateDir = path.join(this.ophanDir, 'orchestrator');
+    const stateDir = path.join(this.ophanDir, 'agents', 'orchestrator');
     await fs.mkdir(stateDir, { recursive: true });
 
     const statePath = path.join(stateDir, 'state.json');

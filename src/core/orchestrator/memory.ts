@@ -33,7 +33,7 @@ export class MemoryManager {
 
   constructor(options: MemoryManagerOptions) {
     this.options = options;
-    this.memoryPath = path.join(options.ophanDir, 'orchestrator', 'memory.json');
+    this.memoryPath = path.join(options.ophanDir, 'agents', 'orchestrator', 'memory.json');
     this.memory = { preferences: [], episodes: [], patterns: [] };
   }
 
@@ -143,15 +143,30 @@ export class MemoryManager {
   /**
    * Distill a completed session into preferences and episodes.
    * Uses Claude (haiku) to extract structured memory from raw messages.
+   *
+   * Note: This method does NOT call save() — the caller is responsible
+   * for saving memory after distillation to ensure any preferences
+   * recorded during the session are also persisted.
    */
   async distillSession(session: ConversationSession): Promise<void> {
-    if (session.messages.length < 3) {
-      // Too short to distill meaningfully
+    const nonSystemMessages = session.messages.filter((m) => m.role !== 'system');
+    if (nonSystemMessages.length < 3) {
+      // Too short to distill via LLM, but still record an episode
+      if (nonSystemMessages.length > 0) {
+        this.recordEpisode({
+          id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionId: session.id,
+          summary: `Short session with ${nonSystemMessages.length} message(s)`,
+          outcome: 'partial',
+          goalsCreated: [],
+          guidelinesUpdated: [],
+          timestamp: new Date().toISOString(),
+        });
+      }
       return;
     }
 
-    const messagesText = session.messages
-      .filter((m) => m.role !== 'system')
+    const messagesText = nonSystemMessages
       .slice(-30)
       .map((m) => `[${m.role}]: ${m.content.slice(0, 200)}`)
       .join('\n');
@@ -222,10 +237,18 @@ Rules:
           timestamp: new Date().toISOString(),
         });
       }
-
-      await this.save();
-    } catch {
-      // Distillation failed — not critical
+    } catch (error) {
+      // Distillation LLM call failed — record a fallback episode
+      // so the session is at least tracked in memory
+      this.recordEpisode({
+        id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        sessionId: session.id,
+        summary: `Session with ${nonSystemMessages.length} messages (distillation failed: ${(error as Error).message})`,
+        outcome: 'partial',
+        goalsCreated: [],
+        guidelinesUpdated: [],
+        timestamp: new Date().toISOString(),
+      });
     }
   }
 

@@ -151,7 +151,7 @@ export class ClaudeCodeExecutor {
       model: 'sonnet' as const,
       permissionMode: 'acceptEdits' as const,
       allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-      maxTurns: 50,
+      maxTurns: 25,
     };
 
     try {

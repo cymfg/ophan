@@ -5,11 +5,8 @@
 // State
 let currentPage = 'dashboard';
 let ws = null;
-let logsOffset = 0;
-const logsLimit = 20;
 let currentConfig = null;
 let currentTab = 'guidelines';
-let runningTaskId = null;
 
 // DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,12 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
   loadDashboard();
   initConfigForm();
-  initLogModal();
   initTabs();
-  initTaskRunner();
   initProposals();
   initContextStats();
   initReviewButton();
+  initGoals();
+  initOrchestrator();
 });
 
 // Navigation
@@ -32,6 +29,15 @@ function initNavigation() {
       e.preventDefault();
       const page = e.target.dataset.page;
       navigateTo(page);
+    });
+  });
+
+  // Handle inline nav-link-btn elements (e.g. "View Goals" on dashboard)
+  document.querySelectorAll('.nav-link-btn').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const page = link.dataset.page;
+      if (page) navigateTo(page);
     });
   });
 }
@@ -54,13 +60,6 @@ function navigateTo(page) {
     case 'dashboard':
       loadDashboard();
       break;
-    case 'run-task':
-      checkRunningTask();
-      break;
-    case 'logs':
-      logsOffset = 0;
-      loadLogs();
-      break;
     case 'proposals':
       loadProposals();
       break;
@@ -72,6 +71,12 @@ function navigateTo(page) {
       break;
     case 'guidelines':
       loadGuidelines();
+      break;
+    case 'goals':
+      loadGoals();
+      break;
+    case 'orchestrator':
+      loadOrchestratorPage();
       break;
     case 'digests':
       loadDigests();
@@ -120,31 +125,12 @@ function handleWebSocketEvent(eventType, data) {
         loadDashboard();
       }
       break;
-    case 'task:started':
-      handleTaskStarted(data);
-      break;
-    case 'task:progress':
-      handleTaskProgress(data);
-      break;
-    case 'task:iteration':
-      handleTaskIteration(data);
-      break;
-    case 'task:escalation':
-      handleTaskEscalation(data);
-      break;
     case 'task:completed':
-      handleTaskCompleted(data);
       if (currentPage === 'dashboard') {
         loadDashboard();
-      } else if (currentPage === 'logs') {
-        loadLogs();
+      } else if (currentPage === 'goals') {
+        loadGoals();
       }
-      break;
-    case 'task:cancelled':
-      handleTaskCancelled(data);
-      break;
-    case 'task:error':
-      handleTaskError(data);
       break;
     case 'review:started':
       handleReviewStarted(data);
@@ -218,147 +204,14 @@ async function loadDashboard() {
     // Load context analysis metrics
     loadDashboardAgentMetrics();
 
+    // Load goals summary
+    loadDashboardGoals(data);
+
+    // Load orchestrator metrics
+    loadDashboardOrchestrator();
+
   } catch (error) {
     console.error('Failed to load dashboard:', error);
-  }
-}
-
-// Logs
-async function loadLogs() {
-  const tbody = document.getElementById('logsTableBody');
-  tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading logs...</td></tr>';
-
-  try {
-    const response = await fetch(`/api/logs?limit=${logsLimit}&offset=${logsOffset}`);
-    const data = await response.json();
-
-    if (data.logs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="loading">No task logs found</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.logs.map(log => `
-      <tr data-id="${log.id}">
-        <td><code>${log.id.substring(0, 20)}...</code></td>
-        <td>${escapeHtml(log.description?.substring(0, 50) || '-')}${log.description?.length > 50 ? '...' : ''}</td>
-        <td><span class="status-badge ${log.status}">${log.status}</span></td>
-        <td>${log.iterations || '-'}</td>
-        <td>${log.cost ? `$${log.cost.toFixed(2)}` : '-'}</td>
-        <td>${log.startTime ? new Date(log.startTime).toLocaleString() : '-'}</td>
-      </tr>
-    `).join('');
-
-    // Add click handlers
-    tbody.querySelectorAll('tr').forEach(row => {
-      row.addEventListener('click', () => showLogDetail(row.dataset.id));
-    });
-
-    // Pagination
-    renderPagination(data.total);
-
-  } catch (error) {
-    console.error('Failed to load logs:', error);
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Failed to load logs</td></tr>';
-  }
-}
-
-function renderPagination(total) {
-  const pagination = document.getElementById('logsPagination');
-  const totalPages = Math.ceil(total / logsLimit);
-  const currentPageNum = Math.floor(logsOffset / logsLimit) + 1;
-
-  if (totalPages <= 1) {
-    pagination.innerHTML = '';
-    return;
-  }
-
-  let html = '';
-  if (currentPageNum > 1) {
-    html += `<button data-page="${currentPageNum - 1}">Previous</button>`;
-  }
-  for (let i = 1; i <= Math.min(totalPages, 5); i++) {
-    html += `<button data-page="${i}" class="${i === currentPageNum ? 'active' : ''}">${i}</button>`;
-  }
-  if (currentPageNum < totalPages) {
-    html += `<button data-page="${currentPageNum + 1}">Next</button>`;
-  }
-
-  pagination.innerHTML = html;
-
-  pagination.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      logsOffset = (parseInt(btn.dataset.page) - 1) * logsLimit;
-      loadLogs();
-    });
-  });
-}
-
-function initLogModal() {
-  document.getElementById('closeLogDetail').addEventListener('click', () => {
-    document.getElementById('logDetailModal').classList.remove('active');
-  });
-
-  document.getElementById('logDetailModal').addEventListener('click', (e) => {
-    if (e.target.id === 'logDetailModal') {
-      document.getElementById('logDetailModal').classList.remove('active');
-    }
-  });
-
-  document.getElementById('refreshLogs').addEventListener('click', loadLogs);
-}
-
-async function showLogDetail(id) {
-  const modal = document.getElementById('logDetailModal');
-  const content = document.getElementById('logDetailContent');
-
-  content.innerHTML = '<div class="loading">Loading...</div>';
-  modal.classList.add('active');
-
-  try {
-    const response = await fetch(`/api/logs/${id}`);
-    const data = await response.json();
-
-    content.innerHTML = `
-      <div class="log-detail">
-        <h4>Task: ${escapeHtml(data.task?.description || 'Unknown')}</h4>
-        <div class="summary-item">
-          <span class="summary-label">ID</span>
-          <span class="summary-value"><code>${data.task?.id || id}</code></span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Status</span>
-          <span class="summary-value"><span class="status-badge ${data.task?.status}">${data.task?.status}</span></span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Iterations</span>
-          <span class="summary-value">${data.task?.iterations || '-'}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Cost</span>
-          <span class="summary-value">${data.task?.cost ? `$${data.task.cost.toFixed(4)}` : '-'}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Started</span>
-          <span class="summary-value">${data.task?.startTime ? new Date(data.task.startTime).toLocaleString() : '-'}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Ended</span>
-          <span class="summary-value">${data.task?.endTime ? new Date(data.task.endTime).toLocaleString() : '-'}</span>
-        </div>
-
-        ${data.iterations ? `
-          <h4 style="margin-top: 20px;">Iterations (${data.iterations.length})</h4>
-          ${data.iterations.map((iter, i) => `
-            <div class="guidelines-file">
-              <h4>Iteration ${i + 1}</h4>
-              <pre>${escapeHtml(JSON.stringify(iter, null, 2))}</pre>
-            </div>
-          `).join('')}
-        ` : ''}
-      </div>
-    `;
-  } catch (error) {
-    content.innerHTML = '<div class="loading">Failed to load log details</div>';
   }
 }
 
@@ -544,213 +397,6 @@ async function loadDigestContent(filename) {
     text.textContent = data.content;
   } catch (error) {
     text.textContent = 'Failed to load digest content';
-  }
-}
-
-// Task Runner
-function initTaskRunner() {
-  document.getElementById('runTaskBtn').addEventListener('click', startTask);
-  document.getElementById('cancelTaskBtn').addEventListener('click', cancelTask);
-  document.getElementById('newTaskBtn').addEventListener('click', resetTaskRunner);
-  document.getElementById('viewLogsBtn').addEventListener('click', () => {
-    navigateTo('logs');
-  });
-}
-
-async function checkRunningTask() {
-  try {
-    const response = await fetch('/api/task/current');
-    const data = await response.json();
-
-    if (data.running) {
-      runningTaskId = data.task.id;
-      showRunningSection(data.task.description);
-    }
-  } catch (error) {
-    console.error('Failed to check running task:', error);
-  }
-}
-
-async function startTask() {
-  const description = document.getElementById('taskDescription').value.trim();
-
-  if (!description) {
-    alert('Please enter a task description');
-    return;
-  }
-
-  const btn = document.getElementById('runTaskBtn');
-  btn.disabled = true;
-  btn.textContent = 'Starting...';
-
-  try {
-    const response = await fetch('/api/task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      alert(data.error || 'Failed to start task');
-      btn.disabled = false;
-      btn.textContent = 'Run Task';
-      return;
-    }
-
-    runningTaskId = data.taskId;
-    showRunningSection(description);
-
-  } catch (error) {
-    alert('Failed to start task: ' + error.message);
-    btn.disabled = false;
-    btn.textContent = 'Run Task';
-  }
-}
-
-async function cancelTask() {
-  if (!runningTaskId) return;
-
-  const btn = document.getElementById('cancelTaskBtn');
-  btn.disabled = true;
-
-  try {
-    await fetch('/api/task/cancel', { method: 'POST' });
-  } catch (error) {
-    console.error('Failed to cancel task:', error);
-    btn.disabled = false;
-  }
-}
-
-function showRunningSection(description) {
-  document.getElementById('taskInputSection').style.display = 'none';
-  document.getElementById('taskRunningSection').style.display = 'block';
-  document.getElementById('taskResultSection').style.display = 'none';
-
-  document.getElementById('runningTaskDesc').textContent = description;
-  document.getElementById('runningTaskStatus').textContent = 'Starting...';
-  document.getElementById('taskStatusText').textContent = 'Starting task...';
-  document.getElementById('progressFill').style.width = '0%';
-  document.getElementById('iterationCount').textContent = 'Iteration 0';
-  document.getElementById('logEntries').innerHTML = '';
-
-  addLogEntry('Task started', 'info');
-}
-
-function showResultSection(status, iterations, cost) {
-  document.getElementById('taskInputSection').style.display = 'none';
-  document.getElementById('taskRunningSection').style.display = 'none';
-  document.getElementById('taskResultSection').style.display = 'block';
-
-  const isSuccess = status === 'converged';
-  const icon = document.getElementById('resultIcon');
-  const title = document.getElementById('resultTitle');
-
-  icon.textContent = isSuccess ? '✓' : '✗';
-  icon.className = 'result-icon ' + (isSuccess ? 'success' : 'danger');
-  title.textContent = isSuccess ? 'Task Completed Successfully' : 'Task ' + status.charAt(0).toUpperCase() + status.slice(1);
-
-  document.getElementById('finalStatus').innerHTML = `<span class="status-badge ${status}">${status}</span>`;
-  document.getElementById('finalIterations').textContent = iterations || '-';
-  document.getElementById('finalCost').textContent = cost ? `$${cost.toFixed(4)}` : '-';
-}
-
-function resetTaskRunner() {
-  runningTaskId = null;
-
-  document.getElementById('taskInputSection').style.display = 'block';
-  document.getElementById('taskRunningSection').style.display = 'none';
-  document.getElementById('taskResultSection').style.display = 'none';
-
-  document.getElementById('taskDescription').value = '';
-  document.getElementById('runTaskBtn').disabled = false;
-  document.getElementById('runTaskBtn').textContent = 'Run Task';
-}
-
-function addLogEntry(message, type = 'info') {
-  const entries = document.getElementById('logEntries');
-  const entry = document.createElement('div');
-  entry.className = 'log-entry ' + type;
-
-  const time = new Date().toLocaleTimeString();
-  entry.innerHTML = `<span class="log-time">${time}</span> <span class="log-message">${escapeHtml(message)}</span>`;
-
-  entries.appendChild(entry);
-  entries.scrollTop = entries.scrollHeight;
-}
-
-// Task WebSocket Event Handlers
-function handleTaskStarted(data) {
-  if (currentPage === 'run-task') {
-    runningTaskId = data.task?.id;
-    showRunningSection(data.task?.description || 'Unknown task');
-    document.getElementById('maxIterations').textContent = '/ ' + (data.maxIterations || 5);
-  }
-}
-
-function handleTaskProgress(data) {
-  if (currentPage === 'run-task' && data.message) {
-    addLogEntry(data.message, 'info');
-    document.getElementById('runningTaskStatus').textContent = data.message;
-    document.getElementById('taskStatusText').textContent = data.message;
-  }
-}
-
-function handleTaskIteration(data) {
-  if (currentPage === 'run-task') {
-    const iteration = data.iteration || 0;
-    const maxIterations = data.maxIterations || 5;
-    const progress = (iteration / maxIterations) * 100;
-
-    document.getElementById('progressFill').style.width = progress + '%';
-    document.getElementById('iterationCount').textContent = 'Iteration ' + iteration;
-    document.getElementById('maxIterations').textContent = '/ ' + maxIterations;
-
-    const status = data.passed ? 'Passed' : 'Failed';
-    const score = data.score !== undefined ? ` (score: ${data.score.toFixed(2)})` : '';
-    addLogEntry(`Iteration ${iteration} ${status}${score}`, data.passed ? 'success' : 'warning');
-
-    if (data.failures && data.failures.length > 0) {
-      data.failures.forEach(f => addLogEntry(`  - ${f}`, 'error'));
-    }
-  }
-}
-
-function handleTaskEscalation(data) {
-  if (currentPage === 'run-task') {
-    addLogEntry(`Task escalated: ${data.reason}`, 'error');
-    if (data.context?.suggestedAction) {
-      addLogEntry(`Suggested: ${data.context.suggestedAction}`, 'warning');
-    }
-  }
-}
-
-function handleTaskCompleted(data) {
-  runningTaskId = null;
-
-  if (currentPage === 'run-task') {
-    const status = data.status || 'completed';
-    addLogEntry(`Task completed with status: ${status}`, status === 'converged' ? 'success' : 'warning');
-    showResultSection(status, data.iterations, data.cost);
-  }
-}
-
-function handleTaskCancelled(data) {
-  runningTaskId = null;
-
-  if (currentPage === 'run-task') {
-    addLogEntry('Task cancelled', 'warning');
-    showResultSection('cancelled', data.iterations, data.cost);
-  }
-}
-
-function handleTaskError(data) {
-  runningTaskId = null;
-
-  if (currentPage === 'run-task') {
-    addLogEntry(`Error: ${data.error || 'Unknown error'}`, 'error');
-    showResultSection('failed', null, null);
   }
 }
 
@@ -1095,6 +741,395 @@ async function loadDashboardAgentMetrics() {
     // Task agent metrics come from the status API (already loaded in loadDashboard)
   } catch (error) {
     console.error('Failed to load agent metrics:', error);
+  }
+}
+
+// Goals Page
+let goalsData = [];
+
+function initGoals() {
+  document.getElementById('refreshGoals').addEventListener('click', loadGoals);
+  document.getElementById('closeGoalDetail').addEventListener('click', () => {
+    document.getElementById('goalDetailModal').classList.remove('active');
+  });
+  document.getElementById('goalDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'goalDetailModal') {
+      document.getElementById('goalDetailModal').classList.remove('active');
+    }
+  });
+}
+
+async function loadGoals() {
+  const list = document.getElementById('goalsList');
+  list.innerHTML = '<div class="loading">Loading goals...</div>';
+
+  try {
+    const response = await fetch('/api/goals');
+    goalsData = await response.json();
+
+    // Update summary metrics
+    const active = goalsData.filter(g => ['in_progress', 'planning'].includes(g.status)).length;
+    const completed = goalsData.filter(g => g.status === 'completed').length;
+    const pending = goalsData.filter(g => g.status === 'pending').length;
+    const totalCost = goalsData.reduce((sum, g) => sum + (g.totalCost || 0), 0);
+
+    document.getElementById('goalsActive').textContent = active;
+    document.getElementById('goalsCompleted').textContent = completed;
+    document.getElementById('goalsPending').textContent = pending;
+    document.getElementById('goalsTotalCost').textContent = `$${totalCost.toFixed(2)}`;
+
+    if (goalsData.length === 0) {
+      list.innerHTML = '<div class="empty-state">No goals found. Create goal files in .ophan/goals/ to get started.</div>';
+      return;
+    }
+
+    list.innerHTML = goalsData.map(goal => `
+      <div class="card goal-card" data-goal-id="${goal.id}" onclick="showGoalDetail('${goal.id}')">
+        <div class="goal-card-header">
+          <h4>${escapeHtml(goal.title)}</h4>
+          <span class="status-badge ${goal.status}">${goal.status}</span>
+        </div>
+        ${goal.priority ? `<span class="goal-priority priority-${goal.priority}">${goal.priority}</span>` : ''}
+        <div class="goal-card-body">
+          <div class="goal-progress">
+            <div class="goal-progress-bar">
+              <div class="goal-progress-fill" style="width: ${getGoalProgressPercent(goal)}%"></div>
+            </div>
+            <span class="goal-progress-text">${goal.taskProgress}</span>
+          </div>
+          <div class="goal-card-meta">
+            ${goal.tags && goal.tags.length ? `<span class="goal-tags">${goal.tags.map(t => `<span class="goal-tag">${escapeHtml(t)}</span>`).join('')}</span>` : ''}
+            <span class="goal-cost">$${(goal.totalCost || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+  } catch (error) {
+    console.error('Failed to load goals:', error);
+    list.innerHTML = '<div class="loading">Failed to load goals</div>';
+  }
+}
+
+function getGoalProgressPercent(goal) {
+  if (!goal.taskProgress || goal.taskProgress === 'no tasks') return 0;
+  const parts = goal.taskProgress.split('/');
+  if (parts.length !== 2) return 0;
+  const completed = parseInt(parts[0]);
+  const total = parseInt(parts[1]);
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
+}
+
+function showGoalDetail(goalId) {
+  const goal = goalsData.find(g => g.id === goalId);
+  if (!goal) return;
+
+  const modal = document.getElementById('goalDetailModal');
+  const title = document.getElementById('goalDetailTitle');
+  const content = document.getElementById('goalDetailContent');
+
+  title.textContent = goal.title;
+  modal.classList.add('active');
+
+  content.innerHTML = `
+    <div class="goal-detail">
+      <div class="goal-detail-meta">
+        <span class="status-badge ${goal.status}">${goal.status}</span>
+        ${goal.priority ? `<span class="goal-priority priority-${goal.priority}">${goal.priority}</span>` : ''}
+        ${goal.tags && goal.tags.length ? goal.tags.map(t => `<span class="goal-tag">${escapeHtml(t)}</span>`).join('') : ''}
+      </div>
+
+      ${goal.description ? `
+        <div class="goal-section">
+          <h4>Description</h4>
+          <p>${escapeHtml(goal.description)}</p>
+        </div>
+      ` : ''}
+
+      ${goal.acceptanceCriteria && goal.acceptanceCriteria.length ? `
+        <div class="goal-section">
+          <h4>Acceptance Criteria</h4>
+          <ul class="goal-criteria-list">
+            ${goal.acceptanceCriteria.map(ac => `<li>${escapeHtml(ac)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${goal.dependsOn && goal.dependsOn.length ? `
+        <div class="goal-section">
+          <h4>Dependencies</h4>
+          <p>${goal.dependsOn.map(d => `<code>${escapeHtml(d)}</code>`).join(', ')}</p>
+        </div>
+      ` : ''}
+
+      <div class="goal-section">
+        <h4>Progress</h4>
+        <div class="goal-progress" style="margin-bottom: 12px;">
+          <div class="goal-progress-bar">
+            <div class="goal-progress-fill" style="width: ${getGoalProgressPercent(goal)}%"></div>
+          </div>
+          <span class="goal-progress-text">${goal.taskProgress} tasks</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Cost</span>
+          <span class="summary-value">$${(goal.totalCost || 0).toFixed(4)}</span>
+        </div>
+        ${goal.startedAt ? `<div class="summary-item"><span class="summary-label">Started</span><span class="summary-value">${new Date(goal.startedAt).toLocaleString()}</span></div>` : ''}
+        ${goal.completedAt ? `<div class="summary-item"><span class="summary-label">Completed</span><span class="summary-value">${new Date(goal.completedAt).toLocaleString()}</span></div>` : ''}
+      </div>
+
+      ${goal.tasks && goal.tasks.length ? `
+        <div class="goal-section">
+          <h4>Tasks (${goal.tasks.length})</h4>
+          <table class="logs-table goal-tasks-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Iterations</th>
+                <th>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${goal.tasks.map(task => `
+                <tr class="goal-task-row" onclick="toggleTaskDetail('${escapeHtml(task.id)}')">
+                  <td>${escapeHtml(task.description)}</td>
+                  <td><span class="status-badge ${task.status}">${task.status}</span></td>
+                  <td>${task.result?.iterations || '-'}</td>
+                  <td>${task.result?.cost ? `$${task.result.cost.toFixed(4)}` : '-'}</td>
+                </tr>
+                <tr class="goal-task-detail" id="task-detail-${escapeHtml(task.id)}" style="display: none;">
+                  <td colspan="4">
+                    <div class="task-detail-expanded">
+                      ${task.rationale ? `<div class="task-detail-field"><span class="task-detail-label">Rationale</span><p>${escapeHtml(task.rationale)}</p></div>` : ''}
+                      ${task.result?.summary ? `<div class="task-detail-field"><span class="task-detail-label">Result Summary</span><p>${escapeHtml(task.result.summary)}</p></div>` : ''}
+                      ${task.dependsOn && task.dependsOn.length ? `<div class="task-detail-field"><span class="task-detail-label">Depends On</span><p>${task.dependsOn.map(d => `<code>${escapeHtml(d)}</code>`).join(', ')}</p></div>` : ''}
+                      ${!task.rationale && !task.result?.summary ? '<div class="task-detail-field"><p class="text-muted">No additional details available</p></div>' : ''}
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function toggleTaskDetail(taskId) {
+  const detail = document.getElementById(`task-detail-${taskId}`);
+  if (detail) {
+    detail.style.display = detail.style.display === 'none' ? '' : 'none';
+  }
+}
+
+// Orchestrator Page
+let currentMemoryTab = 'preferences';
+let memoryData = null;
+
+function initOrchestrator() {
+  document.getElementById('refreshOrchestrator').addEventListener('click', loadOrchestratorPage);
+  document.getElementById('closeSessionDetail').addEventListener('click', () => {
+    document.getElementById('sessionDetailModal').classList.remove('active');
+  });
+  document.getElementById('sessionDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'sessionDetailModal') {
+      document.getElementById('sessionDetailModal').classList.remove('active');
+    }
+  });
+
+  // Memory tab switching
+  document.querySelectorAll('[data-memory-tab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('[data-memory-tab]').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentMemoryTab = tab.dataset.memoryTab;
+      if (memoryData) {
+        renderMemoryTab(memoryData);
+      }
+    });
+  });
+}
+
+async function loadOrchestratorPage() {
+  // Fetch all data in parallel
+  try {
+    const [statusRes, sessionsRes, memoryRes] = await Promise.all([
+      fetch('/api/orchestrator/status'),
+      fetch('/api/orchestrator/sessions'),
+      fetch('/api/orchestrator/memory'),
+    ]);
+
+    const status = await statusRes.json();
+    const sessions = await sessionsRes.json();
+    memoryData = await memoryRes.json();
+
+    // Update status metrics
+    document.getElementById('orchGoalsCreated').textContent = status.goalsCreated ?? 0;
+    document.getElementById('orchGuidelinesUpdated').textContent = status.guidelinesUpdated ?? 0;
+    document.getElementById('orchConversations').textContent = status.conversationsHandled ?? 0;
+    document.getElementById('orchCompletionRate').textContent =
+      status.supervisedGoalCompletionRate != null
+        ? `${Math.round(status.supervisedGoalCompletionRate * 100)}%`
+        : '-';
+
+    // Daemon status
+    document.getElementById('orchLastCheck').textContent = status.lastProactiveCheck
+      ? new Date(status.lastProactiveCheck).toLocaleString()
+      : 'Never';
+    const alerts = status.recentAlerts || [];
+    document.getElementById('orchAlertCount').textContent = alerts.length;
+    const alertsList = document.getElementById('orchAlertsList');
+    if (alerts.length === 0) {
+      alertsList.innerHTML = '<div class="empty-state">No recent alerts</div>';
+    } else {
+      alertsList.innerHTML = alerts.map(a => `
+        <div class="alert-item">
+          <span class="alert-type">${escapeHtml(a.type || 'alert')}</span>
+          <span class="alert-message">${escapeHtml(a.message || a.summary || JSON.stringify(a))}</span>
+        </div>
+      `).join('');
+    }
+
+    // Sessions list
+    const sessionsList = document.getElementById('orchSessionsList');
+    if (sessions.length === 0) {
+      sessionsList.innerHTML = '<div class="empty-state">No conversation sessions found</div>';
+    } else {
+      sessionsList.innerHTML = sessions.map(s => `
+        <div class="session-item" onclick="showSessionDetail('${s.id}')">
+          <div class="session-header">
+            <span class="session-date">${new Date(s.startedAt).toLocaleString()}</span>
+            <span class="session-msg-count">${s.messageCount} messages</span>
+          </div>
+          <div class="session-preview">${escapeHtml(s.summary || 'No preview')}</div>
+        </div>
+      `).join('');
+    }
+
+    // Memory
+    renderMemoryTab(memoryData);
+
+  } catch (error) {
+    console.error('Failed to load orchestrator page:', error);
+  }
+}
+
+function renderMemoryTab(memory) {
+  const container = document.getElementById('memoryContent');
+
+  if (currentMemoryTab === 'preferences') {
+    const prefs = memory.preferences || [];
+    if (prefs.length === 0) {
+      container.innerHTML = '<div class="empty-state">No preferences recorded yet</div>';
+    } else {
+      container.innerHTML = `<div class="memory-list">${prefs.map(p => `
+        <div class="memory-item">
+          <div class="memory-item-text">${escapeHtml(p.text || p.content || JSON.stringify(p))}</div>
+          ${p.confidence != null ? `<span class="memory-confidence">${Math.round(p.confidence * 100)}% confidence</span>` : ''}
+          ${p.source ? `<span class="memory-source">from ${escapeHtml(p.source)}</span>` : ''}
+        </div>
+      `).join('')}</div>`;
+    }
+  } else if (currentMemoryTab === 'episodes') {
+    const episodes = memory.episodes || [];
+    if (episodes.length === 0) {
+      container.innerHTML = '<div class="empty-state">No episodes recorded yet</div>';
+    } else {
+      container.innerHTML = `<div class="memory-list">${episodes.map(e => `
+        <div class="memory-item">
+          <div class="memory-item-text">${escapeHtml(e.summary || e.description || JSON.stringify(e))}</div>
+          ${e.outcome ? `<span class="memory-outcome ${e.outcome}">${e.outcome}</span>` : ''}
+          ${e.timestamp ? `<span class="memory-date">${new Date(e.timestamp).toLocaleDateString()}</span>` : ''}
+        </div>
+      `).join('')}</div>`;
+    }
+  } else if (currentMemoryTab === 'patterns') {
+    const patterns = memory.patterns || [];
+    if (patterns.length === 0) {
+      container.innerHTML = '<div class="empty-state">No patterns detected yet</div>';
+    } else {
+      container.innerHTML = `<div class="memory-list">${patterns.map(p => `
+        <div class="memory-item">
+          <div class="memory-item-text">${escapeHtml(p.description || p.pattern || JSON.stringify(p))}</div>
+          ${p.occurrences != null ? `<span class="memory-count">${p.occurrences} occurrences</span>` : ''}
+          ${p.confidence != null ? `<span class="memory-confidence">${Math.round(p.confidence * 100)}% confidence</span>` : ''}
+        </div>
+      `).join('')}</div>`;
+    }
+  }
+}
+
+async function showSessionDetail(sessionId) {
+  const modal = document.getElementById('sessionDetailModal');
+  const content = document.getElementById('sessionDetailContent');
+
+  content.innerHTML = '<div class="loading">Loading session...</div>';
+  modal.classList.add('active');
+
+  try {
+    const response = await fetch(`/api/orchestrator/sessions/${sessionId}`);
+    const session = await response.json();
+
+    content.innerHTML = `
+      <div class="session-detail">
+        <div class="session-detail-meta">
+          <div class="summary-item">
+            <span class="summary-label">Started</span>
+            <span class="summary-value">${new Date(session.startedAt).toLocaleString()}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Last Active</span>
+            <span class="summary-value">${new Date(session.lastActiveAt).toLocaleString()}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Messages</span>
+            <span class="summary-value">${session.messages?.length || 0}</span>
+          </div>
+        </div>
+        <div class="conversation-thread">
+          ${(session.messages || []).map(msg => `
+            <div class="conversation-message role-${msg.role}">
+              <div class="message-header">
+                <span class="message-role">${msg.role}</span>
+                <span class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+              </div>
+              <div class="message-content">${escapeHtml(msg.content)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+  } catch (error) {
+    content.innerHTML = '<div class="loading">Failed to load session details</div>';
+  }
+}
+
+// Dashboard extensions for Goals and Orchestrator
+async function loadDashboardGoals(statusData) {
+  if (statusData && statusData.goals) {
+    const g = statusData.goals;
+    document.getElementById('dashActiveGoals').textContent = g.active ?? 0;
+    document.getElementById('dashCompletedGoals').textContent = g.completed ?? 0;
+    document.getElementById('dashGoalsCost').textContent = `$${(g.totalCost ?? 0).toFixed(2)}`;
+  }
+}
+
+async function loadDashboardOrchestrator() {
+  try {
+    const response = await fetch('/api/orchestrator/status');
+    const status = await response.json();
+
+    document.getElementById('orchAgentGoalsCreated').textContent = status.goalsCreated ?? 0;
+    document.getElementById('orchAgentConversations').textContent = status.conversationsHandled ?? 0;
+    document.getElementById('orchAgentCompletionRate').textContent =
+      status.supervisedGoalCompletionRate != null
+        ? `${Math.round(status.supervisedGoalCompletionRate * 100)}%`
+        : '-';
+  } catch (error) {
+    console.error('Failed to load orchestrator metrics:', error);
   }
 }
 

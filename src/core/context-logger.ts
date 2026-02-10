@@ -20,7 +20,7 @@ export class ContextLogger {
   private logsDir: string;
 
   constructor(options: ContextLoggerOptions) {
-    this.logsDir = path.join(options.ophanDir, 'context-logs');
+    this.logsDir = path.join(options.ophanDir, 'agents', 'dev', 'context-logs');
   }
 
   /**
