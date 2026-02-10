@@ -78,14 +78,14 @@ export class InteractiveReviewer {
     console.log();
 
     // Group proposals by source
-    const taskAgentProposals = proposals.filter(p => p.source === 'task-agent');
-    const contextAgentProposals = proposals.filter(p => p.source === 'context-agent');
+    const devAgentProposals = proposals.filter(p => p.source === 'dev-agent' || p.source === 'task-agent');
+    const contextProposals = proposals.filter(p => p.source === 'context-logger');
 
-    if (taskAgentProposals.length > 0) {
-      logger.info(`  Task Agent: ${taskAgentProposals.length} proposal(s)`);
+    if (devAgentProposals.length > 0) {
+      logger.info(`  Dev Agent: ${devAgentProposals.length} proposal(s)`);
     }
-    if (contextAgentProposals.length > 0) {
-      logger.info(`  Context Agent: ${contextAgentProposals.length} proposal(s)`);
+    if (contextProposals.length > 0) {
+      logger.info(`  Context Analysis: ${contextProposals.length} proposal(s)`);
     }
     console.log();
 
@@ -189,9 +189,9 @@ export class InteractiveReviewer {
     console.log(gold('─'.repeat(50)));
     console.log();
 
-    const sourceLabel = proposal.source === 'task-agent'
-      ? chalk.cyan('Task Agent')
-      : chalk.magenta('Context Agent');
+    const sourceLabel = proposal.source === 'dev-agent' || proposal.source === 'task-agent'
+      ? chalk.cyan('Dev Agent')
+      : chalk.magenta('Context Analysis');
 
     const typeLabel = proposal.type === 'guideline'
       ? chalk.green('Guideline')

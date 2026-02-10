@@ -215,7 +215,7 @@ async function loadDashboard() {
     document.getElementById('taskAgentAvgIterations').textContent = data.metrics.averageIterations;
     document.getElementById('taskAgentAvgCost').textContent = '$' + data.metrics.averageCostPerTask;
 
-    // Load context agent metrics
+    // Load context analysis metrics
     loadDashboardAgentMetrics();
 
   } catch (error) {
@@ -990,7 +990,7 @@ async function loadContextStats() {
     }
 
     // Also update dashboard agent metrics
-    updateContextAgentMetrics(metrics);
+    updateContextMetrics(metrics);
 
   } catch (error) {
     console.error('Failed to load context stats:', error);
@@ -999,7 +999,7 @@ async function loadContextStats() {
   }
 }
 
-function updateContextAgentMetrics(metrics) {
+function updateContextMetrics(metrics) {
   document.getElementById('contextAgentHitRate').textContent = metrics.averageHitRate.toFixed(1) + '%';
   document.getElementById('contextAgentMissRate').textContent = metrics.averageMissRate.toFixed(1) + '%';
   document.getElementById('contextAgentTasksAnalyzed').textContent = metrics.tasksAnalyzed;
@@ -1087,10 +1087,10 @@ function handleReviewError(data) {
 // Dashboard Agent Metrics
 async function loadDashboardAgentMetrics() {
   try {
-    // Load context stats for context agent metrics
+    // Load context stats for context analysis metrics
     const contextResponse = await fetch('/api/context-stats?days=30');
     const contextMetrics = await contextResponse.json();
-    updateContextAgentMetrics(contextMetrics);
+    updateContextMetrics(contextMetrics);
 
     // Task agent metrics come from the status API (already loaded in loadDashboard)
   } catch (error) {

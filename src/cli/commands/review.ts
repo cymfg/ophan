@@ -252,18 +252,18 @@ async function reviewPendingProposals(
   logger.info(`${pendingProposals.length} proposal(s) pending review`);
 
   // Group by source
-  const taskAgentProposals = pendingProposals.filter(
-    (p) => p.source === 'task-agent'
+  const devAgentProposals = pendingProposals.filter(
+    (p) => p.source === 'dev-agent' || p.source === 'task-agent'
   );
-  const contextAgentProposals = pendingProposals.filter(
-    (p) => p.source === 'context-agent'
+  const contextProposals = pendingProposals.filter(
+    (p) => p.source === 'context-logger'
   );
 
-  if (taskAgentProposals.length > 0) {
-    logger.keyValue('Task Agent', taskAgentProposals.length.toString());
+  if (devAgentProposals.length > 0) {
+    logger.keyValue('Dev Agent', devAgentProposals.length.toString());
   }
-  if (contextAgentProposals.length > 0) {
-    logger.keyValue('Context Agent', contextAgentProposals.length.toString());
+  if (contextProposals.length > 0) {
+    logger.keyValue('Context Analysis', contextProposals.length.toString());
   }
 
   logger.blank();

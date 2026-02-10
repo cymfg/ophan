@@ -8,6 +8,10 @@ import { statusCommand } from './commands/status.js';
 import { logsCommand } from './commands/logs.js';
 import { createUICommand } from './commands/ui.js';
 import { contextStatsCommand } from './commands/context-stats.js';
+import { devCommand } from './commands/dev.js';
+import { goalsCommand } from './commands/goals.js';
+import { chatCommand } from './commands/chat.js';
+import { daemonCommand } from './commands/daemon.js';
 import { setLogLevel } from './utils/logger.js';
 
 const program = new Command();
@@ -34,6 +38,10 @@ program.addCommand(statusCommand);
 program.addCommand(logsCommand);
 program.addCommand(createUICommand());
 program.addCommand(contextStatsCommand);
+program.addCommand(devCommand);
+program.addCommand(goalsCommand);
+program.addCommand(chatCommand);
+program.addCommand(daemonCommand);
 
 // Parse and execute
 program.parse();

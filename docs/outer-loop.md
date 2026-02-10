@@ -8,11 +8,10 @@ The outer loop is Ophan's periodic review engine. It analyzes task logs to detec
 flowchart TB
     Start([Review Triggered]) --> Load[Load Task Logs]
     Load --> Agents[Run Agent Outer Loops]
-    Agents --> TA[Task Agent]
-    Agents --> CA[Context Agent]
-    TA --> Patterns[Detect Patterns]
-    CA --> CtxMetrics[Analyze Context Usage]
+    Agents --> DA[Dev Agent]
+    DA --> Patterns[Detect Patterns]
     Patterns --> Consolidate[Consolidate Learnings]
+    Load --> CtxMetrics[Analyze Context Usage]
     CtxMetrics --> CtxProposals[Context Proposals]
     Consolidate --> AllProposals[Collect Proposals]
     CtxProposals --> AllProposals
@@ -26,35 +25,34 @@ flowchart TB
     Digest --> Notify[Send Notifications]
     Notify --> Done([Complete])
 
-    subgraph "Task Agent"
-        TA
+    subgraph "Dev Agent"
+        DA
         Patterns
         Consolidate
     end
 
-    subgraph "Context Agent"
-        CA
+    subgraph "Context Analysis"
         CtxMetrics
         CtxProposals
     end
 ```
 
-## Multi-Agent Outer Loop
+## Outer Loop Components
 
-The outer loop runs each registered agent's analysis in sequence:
+The outer loop coordinates the Dev Agent and context analysis:
 
 ```mermaid
 sequenceDiagram
     participant OL as Outer Loop
-    participant TA as Task Agent
-    participant CA as Context Agent
+    participant DA as Dev Agent
+    participant CL as Context Logger
     participant IR as Interactive Reviewer
 
-    OL->>TA: runOuterLoop(lookbackDays)
-    TA-->>OL: patterns, proposals, metrics
+    OL->>DA: runOuterLoop(lookbackDays)
+    DA-->>OL: patterns, proposals, metrics
 
-    OL->>CA: runOuterLoop(lookbackDays)
-    CA-->>OL: context proposals, metrics
+    OL->>CL: generateProposals(lookbackDays)
+    CL-->>OL: context proposals
 
     OL->>OL: Combine all proposals
 
@@ -66,12 +64,12 @@ sequenceDiagram
     end
 ```
 
-**Agent Contributions:**
+**Proposal Sources:**
 
-| Agent | Analyzes | Proposes |
-|-------|----------|----------|
-| Task Agent | Task logs, patterns, learnings | Coding/testing guidelines, criteria |
-| Context Agent | Context usage metrics | Context guidelines, context-quality criteria |
+| Source | Analyzes | Proposes |
+|--------|----------|----------|
+| Dev Agent | Task logs, patterns, learnings | Coding/testing guidelines, criteria |
+| Context Logger | Context usage metrics | Context guidelines, context-quality criteria |
 
 ## Triggering the Outer Loop
 
@@ -337,7 +335,7 @@ flowchart TB
 flowchart LR
     subgraph "Proposal"
         ID[Unique ID]
-        Source[Source: task-agent / context-agent]
+        Source[Source: dev-agent / context-logger]
         Type[Type: guideline / criteria]
         Target[Target File]
         Change[Proposed Change]
@@ -354,7 +352,7 @@ flowchart LR
 | Field | Description |
 |-------|-------------|
 | `id` | Unique identifier |
-| `source` | Which agent generated this (`task-agent` or `context-agent`) |
+| `source` | Which component generated this (`dev-agent` or `context-logger`) |
 | `type` | `guideline` (auto-approvable) or `criteria` (requires human) |
 | `targetFile` | File to modify (e.g., `guidelines/coding.md`) |
 | `change` | The proposed content (may include `APPEND:`, `REPLACE:`, `PREPEND:`) |
@@ -585,9 +583,9 @@ flowchart TB
 | Auto | `--auto` | Auto-approve guidelines, prompt for criteria |
 | Non-Interactive | `--non-interactive` | Skip all, save to pending |
 
-## Context Agent Analysis
+## Context Analysis
 
-The Context Agent analyzes context usage metrics during the outer loop:
+The outer loop analyzes context usage metrics via the ContextLogger:
 
 ```mermaid
 flowchart TB

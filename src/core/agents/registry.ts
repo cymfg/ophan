@@ -35,8 +35,7 @@ export interface RegistryOuterLoopResult {
  * Usage:
  * ```typescript
  * const registry = new AgentRegistry();
- * registry.register(new TaskAgent());
- * registry.register(new ContextAgent());
+ * registry.register(new DevAgent());
  *
  * await registry.initializeAll(options);
  * const result = await registry.runAllOuterLoops(30, false);

@@ -103,6 +103,36 @@ async function runStatus(): Promise<void> {
     logger.warn('Outer loop review recommended. Run `ophan review`.');
   }
 
+  // Goals section
+  if (state.goals && state.goals.length > 0) {
+    console.log();
+    logger.section('Goals');
+    const completedGoals = state.goals.filter((g) => g.status === 'completed').length;
+    const activeGoals = state.goals.filter(
+      (g) => !['completed', 'abandoned'].includes(g.status)
+    ).length;
+    const totalTasks = state.goals.reduce((sum, g) => sum + g.tasks.length, 0);
+    const completedTasks = state.goals.reduce(
+      (sum, g) => sum + g.tasks.filter((t) => t.status === 'converged').length,
+      0
+    );
+
+    logger.keyValue('Total goals', state.goals.length.toString());
+    logger.keyValue('Active', activeGoals.toString());
+    logger.keyValue('Completed', completedGoals.toString());
+    if (totalTasks > 0) {
+      logger.keyValue('Task progress', `${completedTasks}/${totalTasks}`);
+    }
+
+    if (state.lastPlanningRun) {
+      const lastRun = new Date(state.lastPlanningRun);
+      const daysSince = Math.floor(
+        (Date.now() - lastRun.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      logger.keyValue('Last planning run', daysSince === 0 ? 'today' : `${daysSince} days ago`);
+    }
+  }
+
   // Pending proposals
   if (state.pendingProposals.length > 0) {
     console.log();

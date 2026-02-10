@@ -30,5 +30,5 @@ export {
 export { IdGenerator, ContentLoader, AbstractAgent } from './utils.js';
 
 // Agent Implementations
-export { TaskAgent } from './task-agent.js';
-export { ContextAgent } from './context-agent.js';
+export { DevAgent, type DevRunResult, type DevRunOptions } from './dev-agent.js';
+export { OrchestratorAgent, type StartConversationOptions, type DaemonCycleResult } from './orchestrator-agent.js';
