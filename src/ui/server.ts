@@ -19,6 +19,8 @@ import { TaskLogger } from '../core/task-logger.js';
 import { ContextLogger } from '../core/context-logger.js';
 import { OuterLoop } from '../core/outer-loop.js';
 import { loadGoalFiles } from '../core/goal-parser.js';
+import { OrchestratorAgent } from '../core/agents/orchestrator-agent.js';
+import type { ActionResult } from '../core/orchestrator/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -75,8 +77,175 @@ export function createUIServer(options: UIServerOptions): UIServer {
   // Track connected clients
   const clients = new Set<WebSocket>();
 
+  // Chat state
+  let orchestratorAgent: OrchestratorAgent | null = null;
+  let chatProcessing = false;
+
+  async function getOrInitOrchestrator(): Promise<OrchestratorAgent> {
+    if (orchestratorAgent) {
+      // Refresh state on each access so the orchestrator sees latest dev agent activity
+      const state = loadState(projectRoot);
+      orchestratorAgent.setState(state);
+      return orchestratorAgent;
+    }
+
+    const config = loadConfig(projectRoot);
+    const state = loadState(projectRoot);
+
+    orchestratorAgent = new OrchestratorAgent();
+    await orchestratorAgent.initialize({
+      projectRoot,
+      ophanDir,
+      config,
+      onProgress: (msg: string) => broadcast('chat:progress', { message: msg }),
+    });
+    orchestratorAgent.setState(state);
+
+    return orchestratorAgent;
+  }
+
+  async function handleChatEvent(
+    ws: WebSocket,
+    event: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const send = (evt: string, d: unknown): void => {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ event: evt, data: d }));
+      }
+    };
+
+    switch (event) {
+      case 'chat:start': {
+        try {
+          const agent = await getOrInitOrchestrator();
+          const existingId = agent.getSessionId();
+
+          if (!existingId) {
+            await agent.setupSession({ resume: data.resume as boolean });
+          }
+
+          // Load session history for the client
+          const sid = agent.getSessionId()!;
+          const sessionPath = path.join(
+            ophanDir, 'agents', 'orchestrator', 'sessions', `${sid}.json`,
+          );
+          let messages: unknown[] = [];
+          try {
+            const content = await fs.readFile(sessionPath, 'utf-8');
+            const session = JSON.parse(content) as { messages?: unknown[] };
+            messages = session.messages ?? [];
+          } catch {
+            // New session — no history
+          }
+
+          send('chat:session', { sessionId: sid, messages, isNew: messages.length === 0 });
+        } catch (err) {
+          send('chat:error', { error: String(err) });
+        }
+        break;
+      }
+
+      case 'chat:send': {
+        if (chatProcessing) {
+          send('chat:error', { error: 'A message is already being processed. Please wait.' });
+          return;
+        }
+        chatProcessing = true;
+        try {
+          const agent = await getOrInitOrchestrator();
+          if (!agent.getSessionId()) {
+            await agent.setupSession();
+          }
+
+          send('chat:thinking', { sessionId: agent.getSessionId() });
+
+          const response = await agent.processMessage(data.message as string);
+
+          send('chat:response', {
+            text: response.text,
+            actions: response.actions,
+            awaitingConfirmation: response.awaitingConfirmation,
+            sessionId: agent.getSessionId(),
+          });
+        } catch (err) {
+          send('chat:error', { error: String(err) });
+        } finally {
+          chatProcessing = false;
+        }
+        break;
+      }
+
+      case 'chat:confirm': {
+        try {
+          const agent = await getOrInitOrchestrator();
+          if (data.confirm) {
+            const results = await agent.confirmActions();
+            send('chat:actions_result', { results });
+
+            // Auto-execute any newly created goals
+            for (const result of results) {
+              if (result.success && result.artifactPath?.includes('/goals/')) {
+                try {
+                  const goalContent = await fs.readFile(result.artifactPath, 'utf-8');
+                  const titleMatch = goalContent.match(/title:\s*(.+)/);
+                  const descMatch = goalContent.match(/description:\s*(.+)/);
+                  const taskDesc = descMatch?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? 'Execute goal';
+                  const taskTitle = titleMatch?.[1]?.trim() ?? 'New goal';
+
+                  send('chat:system_message', {
+                    message: `Starting work on "${taskTitle}"...`,
+                    type: 'task_starting',
+                  });
+
+                  await prepareAndRunTask(taskDesc);
+                } catch {
+                  // Goal file couldn't be read — not critical
+                }
+              }
+            }
+          } else {
+            agent.cancelActions();
+            send('chat:actions_result', {
+              results: [{ success: true, message: 'Actions cancelled.' }] satisfies ActionResult[],
+            });
+          }
+        } catch (err) {
+          send('chat:error', { error: String(err) });
+        }
+        break;
+      }
+
+      case 'chat:end': {
+        try {
+          if (orchestratorAgent) {
+            await orchestratorAgent.endSession();
+          }
+          send('chat:session', { sessionId: null, messages: [], isNew: true });
+        } catch (err) {
+          send('chat:error', { error: String(err) });
+        }
+        break;
+      }
+    }
+  }
+
   wss.on('connection', (ws) => {
     clients.add(ws);
+
+    ws.on('message', async (raw) => {
+      try {
+        const parsed = JSON.parse(raw.toString()) as { event: string; data: Record<string, unknown> };
+        if (parsed.event?.startsWith('chat:')) {
+          await handleChatEvent(ws, parsed.event, parsed.data ?? {});
+        }
+      } catch (err) {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ event: 'chat:error', data: { error: String(err) } }));
+        }
+      }
+    });
+
     ws.on('close', () => clients.delete(ws));
   });
 
@@ -427,6 +596,122 @@ export function createUIServer(options: UIServerOptions): UIServer {
     }
   });
 
+  // =========================================================================
+  // Chat API (REST fallback for when WebSocket is unavailable)
+  // =========================================================================
+
+  /**
+   * POST /api/chat/session - Start or resume a chat session
+   */
+  app.post('/api/chat/session', async (req: Request, res: Response) => {
+    try {
+      const { resume } = req.body as { resume?: boolean };
+      const agent = await getOrInitOrchestrator();
+      const sessionId = await agent.setupSession({ resume });
+      res.json({ sessionId });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * POST /api/chat/message - Send a chat message
+   */
+  app.post('/api/chat/message', async (req: Request, res: Response) => {
+    try {
+      const { message } = req.body as { message?: string };
+      if (!message || typeof message !== 'string') {
+        res.status(400).json({ error: 'Message is required' });
+        return;
+      }
+
+      if (chatProcessing) {
+        res.status(429).json({ error: 'A message is already being processed. Please wait.' });
+        return;
+      }
+      chatProcessing = true;
+
+      try {
+        const agent = await getOrInitOrchestrator();
+        if (!agent.getSessionId()) {
+          await agent.setupSession();
+        }
+
+        broadcast('chat:thinking', { sessionId: agent.getSessionId() });
+        const response = await agent.processMessage(message);
+
+        broadcast('chat:response', {
+          text: response.text,
+          actions: response.actions,
+          awaitingConfirmation: response.awaitingConfirmation,
+          sessionId: agent.getSessionId(),
+        });
+
+        res.json(response);
+      } finally {
+        chatProcessing = false;
+      }
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * POST /api/chat/confirm - Confirm or cancel pending actions
+   */
+  app.post('/api/chat/confirm', async (req: Request, res: Response) => {
+    try {
+      const { confirm } = req.body as { confirm?: boolean };
+      const agent = await getOrInitOrchestrator();
+
+      if (confirm) {
+        const results = await agent.confirmActions();
+        res.json({ results });
+
+        // Auto-execute any newly created goals
+        for (const result of results) {
+          if (result.success && result.artifactPath?.includes('/goals/')) {
+            try {
+              const goalContent = await fs.readFile(result.artifactPath, 'utf-8');
+              const titleMatch = goalContent.match(/title:\s*(.+)/);
+              const descMatch = goalContent.match(/description:\s*(.+)/);
+              const taskDesc = descMatch?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? 'Execute goal';
+              const taskTitle = titleMatch?.[1]?.trim() ?? 'New goal';
+
+              broadcast('chat:system_message', {
+                message: `Starting work on "${taskTitle}"...`,
+                type: 'task_starting',
+              });
+
+              await prepareAndRunTask(taskDesc);
+            } catch {
+              // Goal file couldn't be read — not critical
+            }
+          }
+        }
+      } else {
+        agent.cancelActions();
+        res.json({ results: [{ success: true, message: 'Actions cancelled.' }] });
+      }
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  /**
+   * DELETE /api/chat/session - End the current chat session
+   */
+  app.delete('/api/chat/session', async (_req: Request, res: Response) => {
+    try {
+      if (orchestratorAgent) {
+        await orchestratorAgent.endSession();
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
   /**
    * GET /api/context-stats - Get context usage statistics
    */
@@ -645,6 +930,67 @@ export function createUIServer(options: UIServerOptions): UIServer {
   });
 
   /**
+   * Prepare and launch a task in the background.
+   * Shared by POST /api/task and chat goal auto-execution.
+   * Returns the initial task, or null if a task is already running.
+   */
+  async function prepareAndRunTask(description: string): Promise<Task | null> {
+    if (runningTask) {
+      broadcast('chat:system_message', {
+        message: 'A task is already running. The goal has been saved and will be picked up next.',
+        type: 'task_queued',
+      });
+      return null;
+    }
+
+    const config = loadConfig(projectRoot);
+    const projectName = path.basename(projectRoot);
+    const guidelines = await loadGuidelinesContent(ophanDir);
+    const criteria = await loadCriteriaContent(ophanDir);
+    const learnings = await loadLearningsContent(ophanDir);
+
+    const taskLogger = new TaskLogger({ ophanDir });
+    await taskLogger.init();
+
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const initialTask: Task = {
+      id: taskId,
+      description,
+      status: 'running',
+      iterations: 0,
+      maxIterations: config.innerLoop.maxIterations,
+      startedAt: new Date().toISOString(),
+      cost: 0,
+      tokensUsed: 0,
+    };
+
+    runningTask = { task: initialTask };
+    broadcast('task:started', { task: initialTask });
+
+    runTaskInBackground(
+      description,
+      config,
+      projectName,
+      ophanDir,
+      guidelines,
+      criteria,
+      learnings,
+      taskLogger,
+      broadcast,
+      (task: Task) => {
+        if (runningTask) {
+          runningTask.task = task;
+        }
+      },
+      () => {
+        runningTask = null;
+      },
+    );
+
+    return initialTask;
+  }
+
+  /**
    * POST /api/task - Start a new task
    */
   app.post('/api/task', async (req: Request, res: Response) => {
@@ -664,66 +1010,8 @@ export function createUIServer(options: UIServerOptions): UIServer {
         return;
       }
 
-      const config = loadConfig(projectRoot);
-      const projectName = path.basename(projectRoot);
-
-      // Load guidelines, criteria, learnings
-      const guidelines = await loadGuidelinesContent(ophanDir);
-      const criteria = await loadCriteriaContent(ophanDir);
-      const learnings = await loadLearningsContent(ophanDir);
-
-      // Initialize task logger
-      const taskLogger = new TaskLogger({ ophanDir });
-      await taskLogger.init();
-
-      // Create placeholder task for immediate response
-      const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-      const initialTask: Task = {
-        id: taskId,
-        description,
-        status: 'running',
-        iterations: 0,
-        maxIterations: config.innerLoop.maxIterations,
-        startedAt: new Date().toISOString(),
-        cost: 0,
-        tokensUsed: 0,
-      };
-
-      runningTask = { task: initialTask };
-
-      // Broadcast task started
-      broadcast('task:started', {
-        task: initialTask,
-      });
-
-      // Return immediately, task runs in background
-      res.json({
-        success: true,
-        message: 'Task started',
-        task: initialTask,
-      });
-
-      // Run task in background
-      runTaskInBackground(
-        description,
-        config,
-        projectName,
-        ophanDir,
-        guidelines,
-        criteria,
-        learnings,
-        taskLogger,
-        broadcast,
-        (task: Task) => {
-          if (runningTask) {
-            runningTask.task = task;
-          }
-        },
-        () => {
-          runningTask = null;
-        }
-      );
+      const task = await prepareAndRunTask(description);
+      res.json({ success: true, message: 'Task started', task });
     } catch (error) {
       runningTask = null;
       res.status(500).json({ error: String(error) });
@@ -874,6 +1162,11 @@ export function createUIServer(options: UIServerOptions): UIServer {
       });
     },
     stop: async () => {
+      // End orchestrator session if active
+      if (orchestratorAgent) {
+        try { await orchestratorAgent.endSession(); } catch { /* ignore */ }
+      }
+
       return new Promise((resolve, reject) => {
         // Close all WebSocket connections
         for (const client of clients) {

@@ -349,7 +349,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     // 5. Assemble full context
     if (!this.devAgentState) {
       const response: OrchestratorResponse = {
-        text: 'No DevAgent state available. Run `ophan dev` first to generate activity.',
+        text: 'No project activity found yet. Run `ophan dev` first to generate some data, or ask me to create a goal.',
         actions: [],
         awaitingConfirmation: false,
       };
@@ -747,7 +747,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
   private statusCommand(): OrchestratorResponse {
     if (!this.devAgentState) {
       return {
-        text: 'No DevAgent state loaded. Run `ophan dev` first to generate activity.',
+        text: 'No project activity yet. Run `ophan dev` first to generate some data, or ask me to create a goal.',
         actions: [],
         awaitingConfirmation: false,
       };
@@ -760,7 +760,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     const completedGoals = goals.filter((g) => g.status === 'completed');
 
     const lines = [
-      '**DevAgent Status**',
+      '**Status**',
       '',
       `Tasks: ${metrics.totalTasks} total, ${metrics.successRate.toFixed(0)}% success rate`,
       `Cost: $${metrics.totalCost.toFixed(4)} total, $${metrics.averageCostPerTask.toFixed(4)} avg/task`,
@@ -787,7 +787,7 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
   private goalsCommand(): OrchestratorResponse {
     if (!this.devAgentState || this.devAgentState.goals.length === 0) {
       return {
-        text: 'No goals defined. Tell me what you want to build and I\'ll create goals for the DevAgent.',
+        text: 'No goals defined. Tell me what you want to build and I\'ll create a goal and start working on it.',
         actions: [],
         awaitingConfirmation: false,
       };
@@ -818,15 +818,15 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
       text: [
         '**Commands:**',
         '',
-        '`/status` — Show DevAgent metrics and active goals',
+        '`/status` — Show metrics and active goals',
         '`/goals` — List all goals',
         '`/help` — Show this help message',
         '`/quit` — End the conversation',
         '',
         'You can also just chat naturally. I can:',
-        '- Create development goals for the DevAgent',
-        '- Review DevAgent results and suggest improvements',
-        '- Update DevAgent guidelines based on patterns',
+        '- Create development goals and execute them',
+        '- Review task results and suggest improvements',
+        '- Update guidelines based on patterns',
         '- Propose criteria changes (requires your approval)',
       ].join('\n'),
       actions: [],
@@ -912,6 +912,74 @@ export class OrchestratorAgent extends AbstractAgent implements BaseAgent {
     }
 
     this.orchestratorState!.lastProactiveCheck = now;
+  }
+
+  // =========================================================================
+  // Non-Blocking Session Management (for server/UI usage)
+  // =========================================================================
+
+  /**
+   * Create or resume a session without blocking.
+   * Unlike startConversation(), this does NOT start an adapter loop —
+   * it just sets up the session so processMessage() can be called directly.
+   */
+  async setupSession(opts?: { resume?: boolean }): Promise<string> {
+    this.ensureInitialized();
+
+    if (opts?.resume) {
+      this.session = await this.conversationManager!.loadLatestSession();
+      if (this.session) {
+        this.log(`Resumed session: ${this.session.id}`);
+        return this.session.id;
+      }
+    }
+
+    if (!this.devAgentState) {
+      throw new Error('DevAgent state not set. Call setState() first.');
+    }
+    this.session = await this.conversationManager!.createSession(this.devAgentState);
+    this.orchestratorState!.conversationsHandled++;
+    this.log(`Created session: ${this.session.id}`);
+    return this.session.id;
+  }
+
+  /**
+   * Get the current session ID, or null if no session is active.
+   */
+  getSessionId(): string | null {
+    return this.session?.id ?? null;
+  }
+
+  /**
+   * Confirm pending actions (public wrapper for server use).
+   */
+  async confirmActions(): Promise<ActionResult[]> {
+    return this.confirmPendingActions();
+  }
+
+  /**
+   * Cancel pending actions.
+   */
+  cancelActions(): void {
+    this.pendingActions = [];
+  }
+
+  /**
+   * End the current session, distill memory, and save state.
+   * Call when the user navigates away from chat or explicitly ends the session.
+   */
+  async endSession(): Promise<void> {
+    if (this.session) {
+      await this.memoryManager!.distillSession(this.session);
+      await this.memoryManager!.save();
+      await this.conversationManager!.saveSession(this.session);
+    }
+    if (this.contextAssembler) {
+      this.orchestratorState!.lastStateHash =
+        this.contextAssembler.getStateHash();
+    }
+    await this.saveOrchestratorState();
+    this.session = null;
   }
 
   // =========================================================================

@@ -16,10 +16,10 @@
         <span class="tagline">Self-improving dev agent</span>
       </div>
       <ul class="nav-links">
-        <li><a href="#" data-page="dashboard" class="active">Dashboard</a></li>
+        <li><a href="#" data-page="chat" class="active">Chat</a></li>
+        <li><a href="#" data-page="dashboard">Dashboard</a></li>
         <li><a href="#" data-page="goals">Goals</a></li>
         <li><a href="#" data-page="proposals">Proposals</a></li>
-        <li><a href="#" data-page="orchestrator">Orchestrator</a></li>
         <li><a href="#" data-page="context-stats">Context Stats</a></li>
         <li><a href="#" data-page="config">Configuration</a></li>
         <li><a href="#" data-page="guidelines">Guidelines</a></li>
@@ -36,7 +36,7 @@
     <!-- Main Content -->
     <main class="content">
       <!-- Dashboard Page -->
-      <section id="page-dashboard" class="page active">
+      <section id="page-dashboard" class="page">
         <header class="page-header">
           <h2>Dashboard</h2>
           <span class="project-name" id="projectName">Loading...</span>
@@ -132,7 +132,7 @@
           <h3>Agent Metrics</h3>
           <div class="agent-metrics-grid" id="agentMetricsGrid">
             <div class="agent-card">
-              <h4>Dev Agent</h4>
+              <h4>Task Execution</h4>
               <div class="agent-metrics" id="taskAgentMetrics">
                 <div class="metric-item">
                   <span class="metric-name">Success Rate</span>
@@ -166,7 +166,7 @@
               </div>
             </div>
             <div class="agent-card">
-              <h4>Orchestrator</h4>
+              <h4>Planning</h4>
               <div class="agent-metrics" id="orchestratorAgentMetrics">
                 <div class="metric-item">
                   <span class="metric-name">Goals Created</span>
@@ -474,6 +474,53 @@
       </section>
 
       <!-- Orchestrator Page -->
+      <!-- Chat Page -->
+      <section id="page-chat" class="page active">
+        <header class="page-header">
+          <h2>Chat</h2>
+          <div class="header-actions">
+            <button class="btn btn-secondary btn-sm" id="chatNewSession">New Session</button>
+            <button class="btn btn-secondary btn-sm" id="chatResumeSession">Resume</button>
+          </div>
+        </header>
+
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-welcome" id="chatWelcome">
+              <h3>Ophan</h3>
+              <p>Ask about project status, create goals, run tasks, or update guidelines.</p>
+              <div class="chat-suggestions">
+                <button class="chat-suggestion" data-message="/status">Show status</button>
+                <button class="chat-suggestion" data-message="/goals">List goals</button>
+                <button class="chat-suggestion" data-message="What are you working on?">Current activity</button>
+                <button class="chat-suggestion" data-message="/help">Help</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-confirmation" id="chatConfirmation">
+            <div class="confirmation-text">Ophan has proposed actions. Proceed?</div>
+            <div class="confirmation-actions">
+              <button class="btn btn-success btn-sm" id="chatConfirmYes">Confirm</button>
+              <button class="btn btn-secondary btn-sm" id="chatConfirmNo">Cancel</button>
+            </div>
+          </div>
+
+          <div class="chat-input-container">
+            <div class="chat-thinking" id="chatThinking">
+              <span class="thinking-dot"></span>
+              <span class="thinking-dot"></span>
+              <span class="thinking-dot"></span>
+              <span class="thinking-text">Thinking...</span>
+            </div>
+            <form id="chatForm" class="chat-form">
+              <textarea id="chatInput" placeholder="Type a message..." rows="1" autocomplete="off"></textarea>
+              <button type="submit" class="btn btn-primary chat-send" id="chatSendBtn">Send</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <section id="page-orchestrator" class="page">
         <header class="page-header">
           <h2>Orchestrator</h2>

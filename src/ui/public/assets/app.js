@@ -3,7 +3,7 @@
  */
 
 // State
-let currentPage = 'dashboard';
+let currentPage = 'chat';
 let ws = null;
 let currentConfig = null;
 let currentTab = 'guidelines';
@@ -12,7 +12,7 @@ let currentTab = 'guidelines';
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initWebSocket();
-  loadDashboard();
+  initChatSession();
   initConfigForm();
   initTabs();
   initProposals();
@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initReviewButton();
   initGoals();
   initOrchestrator();
+  initChat();
 });
 
 // Navigation
@@ -75,6 +76,9 @@ function navigateTo(page) {
     case 'goals':
       loadGoals();
       break;
+    case 'chat':
+      initChatSession();
+      break;
     case 'orchestrator':
       loadOrchestratorPage();
       break;
@@ -125,12 +129,47 @@ function handleWebSocketEvent(eventType, data) {
         loadDashboard();
       }
       break;
-    case 'task:completed':
-      if (currentPage === 'dashboard') {
-        loadDashboard();
-      } else if (currentPage === 'goals') {
-        loadGoals();
-      }
+    case 'task:started': {
+      if (currentPage === 'dashboard') loadDashboard();
+      if (currentPage === 'goals') loadGoals();
+      const startDesc = data.task?.description || 'Processing...';
+      appendChatMessage('system', `Task started: ${startDesc}`);
+      break;
+    }
+    case 'task:progress':
+      updateChatTaskProgress(data.message || '');
+      break;
+    case 'task:iteration': {
+      if (currentPage === 'dashboard') loadDashboard();
+      if (currentPage === 'goals') loadGoals();
+      const score = data.score != null ? `${(data.score * 100).toFixed(0)}%` : '?';
+      const iterMsg = `Iteration ${data.iteration || '?'}/${data.maxIterations || '?'}: ${data.passed ? 'Passed' : 'Adjusting...'} (score: ${score})`;
+      appendChatMessage('system', iterMsg);
+      break;
+    }
+    case 'task:completed': {
+      if (currentPage === 'dashboard') loadDashboard();
+      if (currentPage === 'goals') loadGoals();
+      const taskStatus = data.task?.status === 'converged' ? 'completed successfully' : `finished (${data.task?.status || 'unknown'})`;
+      const learnings = data.learnings ? ` ${data.learnings} learnings extracted.` : '';
+      appendChatMessage('system', `Task ${taskStatus}.${learnings}`);
+      hideChatTaskProgress();
+      break;
+    }
+    case 'task:error':
+      appendChatMessage('system', `Task error: ${data.error || 'Unknown error'}`);
+      hideChatTaskProgress();
+      break;
+    case 'task:escalation':
+      appendChatMessage('system', `Task escalated: ${data.reason || ''} ${data.context || ''}`);
+      break;
+    case 'task:cancelled':
+      if (currentPage === 'dashboard') loadDashboard();
+      appendChatMessage('system', 'Task cancelled.');
+      hideChatTaskProgress();
+      break;
+    case 'chat:system_message':
+      appendChatMessage('system', data.message || '');
       break;
     case 'review:started':
       handleReviewStarted(data);
@@ -152,6 +191,24 @@ function handleWebSocketEvent(eventType, data) {
       if (currentPage === 'dashboard') {
         loadDashboard();
       }
+      break;
+    case 'chat:session':
+      handleChatSession(data);
+      break;
+    case 'chat:thinking':
+      handleChatThinking();
+      break;
+    case 'chat:response':
+      handleChatResponse(data);
+      break;
+    case 'chat:actions_result':
+      handleChatActionsResult(data);
+      break;
+    case 'chat:error':
+      handleChatError(data);
+      break;
+    case 'chat:progress':
+      handleChatProgress(data);
       break;
   }
 }
@@ -1130,6 +1187,275 @@ async function loadDashboardOrchestrator() {
         : '-';
   } catch (error) {
     console.error('Failed to load orchestrator metrics:', error);
+  }
+}
+
+// =========================================================================
+// Chat
+// =========================================================================
+
+let chatSessionId = null;
+let chatSessionStarted = false;
+
+function initChat() {
+  const form = document.getElementById('chatForm');
+  const input = document.getElementById('chatInput');
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    sendChatMessage();
+  });
+
+  // Enter to send, Shift+Enter for newline
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  // Auto-resize textarea
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+
+  // Suggestion buttons
+  document.querySelectorAll('.chat-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      input.value = btn.dataset.message;
+      sendChatMessage();
+    });
+  });
+
+  // New/Resume session buttons
+  document.getElementById('chatNewSession').addEventListener('click', () => {
+    startChatSession(false);
+  });
+  document.getElementById('chatResumeSession').addEventListener('click', () => {
+    startChatSession(true);
+  });
+
+  // Confirmation buttons
+  document.getElementById('chatConfirmYes').addEventListener('click', () => {
+    confirmChatActions(true);
+  });
+  document.getElementById('chatConfirmNo').addEventListener('click', () => {
+    confirmChatActions(false);
+  });
+}
+
+function initChatSession() {
+  if (!chatSessionStarted) {
+    startChatSession(true); // Try to resume on first page load
+  }
+}
+
+function startChatSession(resume) {
+  // Clear messages
+  const container = document.getElementById('chatMessages');
+  container.innerHTML = '';
+  chatSessionId = null;
+  chatSessionStarted = true;
+  document.getElementById('chatConfirmation').classList.remove('visible');
+  document.getElementById('chatThinking').classList.remove('visible');
+  document.getElementById('chatSendBtn').disabled = false;
+
+  // Show welcome state
+  container.innerHTML = `
+    <div class="chat-welcome" id="chatWelcome">
+      <h3>Ophan</h3>
+      <p>Ask about project status, create goals, run tasks, or update guidelines.</p>
+      <div class="chat-suggestions">
+        <button class="chat-suggestion" data-message="/status">Show status</button>
+        <button class="chat-suggestion" data-message="/goals">List goals</button>
+        <button class="chat-suggestion" data-message="What are you working on?">Current activity</button>
+        <button class="chat-suggestion" data-message="/help">Help</button>
+      </div>
+    </div>
+  `;
+
+  // Re-attach suggestion listeners
+  container.querySelectorAll('.chat-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('chatInput').value = btn.dataset.message;
+      sendChatMessage();
+    });
+  });
+
+  // Request session via WebSocket
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ event: 'chat:start', data: { resume } }));
+  }
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const message = input.value.trim();
+  if (!message) return;
+
+  // Clear input
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Hide welcome if visible
+  const welcome = document.getElementById('chatWelcome');
+  if (welcome) welcome.style.display = 'none';
+
+  // Add user message to UI
+  appendChatMessage('user', message);
+
+  // Disable send button
+  document.getElementById('chatSendBtn').disabled = true;
+
+  // Send via WebSocket (preferred) or REST fallback
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      event: 'chat:send',
+      data: { message, sessionId: chatSessionId },
+    }));
+  } else {
+    fetch('/api/chat/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    }).then(res => res.json())
+      .then(data => handleChatResponse(data))
+      .catch(err => handleChatError({ error: err.message }));
+  }
+}
+
+function appendChatMessage(role, content, actions) {
+  const container = document.getElementById('chatMessages');
+  if (!container) return; // Chat page not rendered yet
+  const now = new Date().toLocaleTimeString();
+
+  const roleLabel = role === 'user' ? 'You' : role === 'orchestrator' ? 'Ophan' : 'System';
+
+  let actionsHtml = '';
+  if (actions && actions.length > 0) {
+    actionsHtml = `
+      <div class="chat-actions">
+        ${actions.map(a => `
+          <div class="chat-action-item">
+            <span class="chat-action-type">${escapeHtml(a.type)}</span>
+            ${escapeHtml(a.description || '')}
+            ${a.requiresConfirmation ? '<span class="status-badge pending">needs confirmation</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  const msgEl = document.createElement('div');
+  msgEl.className = `chat-message role-${role}`;
+  msgEl.innerHTML = `
+    <div class="message-header">
+      <span class="message-role">${roleLabel}</span>
+      <span class="message-time">${now}</span>
+    </div>
+    <div class="message-content">${escapeHtml(content)}</div>
+    ${actionsHtml}
+  `;
+
+  container.appendChild(msgEl);
+  container.scrollTop = container.scrollHeight;
+}
+
+function handleChatSession(data) {
+  chatSessionId = data.sessionId;
+
+  // If resuming with existing messages, render them
+  if (data.messages && data.messages.length > 0) {
+    const welcome = document.getElementById('chatWelcome');
+    if (welcome) welcome.style.display = 'none';
+
+    const container = document.getElementById('chatMessages');
+    // Clear welcome content if messages exist
+    container.innerHTML = '';
+
+    for (const msg of data.messages) {
+      appendChatMessage(msg.role, msg.content);
+    }
+  }
+}
+
+function handleChatThinking() {
+  document.getElementById('chatThinking').classList.add('visible');
+  // Reset thinking text
+  const text = document.getElementById('chatThinking').querySelector('.thinking-text');
+  if (text) text.textContent = 'Thinking...';
+}
+
+function handleChatResponse(data) {
+  document.getElementById('chatThinking').classList.remove('visible');
+  document.getElementById('chatSendBtn').disabled = false;
+
+  appendChatMessage('orchestrator', data.text, data.actions);
+
+  if (data.awaitingConfirmation) {
+    document.getElementById('chatConfirmation').classList.add('visible');
+  }
+
+  if (data.sessionId) {
+    chatSessionId = data.sessionId;
+  }
+}
+
+function handleChatActionsResult(data) {
+  document.getElementById('chatConfirmation').classList.remove('visible');
+
+  const results = data.results || [];
+  const summary = results
+    .map(r => `${r.success ? 'Done' : 'Failed'}: ${r.message}`)
+    .join('\n');
+  appendChatMessage('system', summary);
+}
+
+function handleChatError(data) {
+  document.getElementById('chatThinking').classList.remove('visible');
+  document.getElementById('chatSendBtn').disabled = false;
+  appendChatMessage('system', `Error: ${data.error || 'Unknown error'}`);
+}
+
+function handleChatProgress(data) {
+  const thinking = document.getElementById('chatThinking');
+  if (!thinking) return;
+  const text = thinking.querySelector('.thinking-text');
+  if (text && data.message) {
+    text.textContent = data.message;
+  }
+}
+
+function updateChatTaskProgress(message) {
+  const thinking = document.getElementById('chatThinking');
+  if (!thinking) return;
+  thinking.classList.add('visible');
+  const text = thinking.querySelector('.thinking-text');
+  if (text && message) {
+    text.textContent = message;
+  }
+}
+
+function hideChatTaskProgress() {
+  const thinking = document.getElementById('chatThinking');
+  if (thinking) thinking.classList.remove('visible');
+}
+
+function confirmChatActions(confirm) {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      event: 'chat:confirm',
+      data: { confirm },
+    }));
+  } else {
+    fetch('/api/chat/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm }),
+    }).then(res => res.json())
+      .then(data => handleChatActionsResult(data))
+      .catch(err => handleChatError({ error: err.message }));
   }
 }
 
