@@ -10,7 +10,7 @@ import type { Proposal, OphanConfig } from '../../types/index.js';
 /**
  * Unique identifier for an agent type
  */
-export type AgentId = 'task-agent' | 'context-agent' | string;
+export type AgentId = 'dev-agent' | string;
 
 /**
  * Configuration for an agent's (G,C) pair

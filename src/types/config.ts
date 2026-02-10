@@ -107,6 +107,50 @@ export const OphanConfigSchema = z.object({
       webhooks: z.array(WebhookConfigSchema).default([]),
     })
     .optional(),
+
+  orchestrator: z
+    .object({
+      enabled: z.boolean().default(false),
+      proactive: z
+        .object({
+          enabled: z.boolean().default(false),
+          intervalMinutes: z.number().int().positive().default(30),
+        })
+        .default(() => ({
+          enabled: false,
+          intervalMinutes: 30,
+        })),
+      conversation: z
+        .object({
+          maxContextMessages: z.number().int().positive().default(30),
+          maxSessionsRetained: z.number().int().positive().default(50),
+        })
+        .default(() => ({
+          maxContextMessages: 30,
+          maxSessionsRetained: 50,
+        })),
+      model: z.enum(['sonnet', 'opus', 'haiku']).default('sonnet'),
+      daemon: z
+        .object({
+          intervalMinutes: z.number().int().positive().default(30),
+        })
+        .default(() => ({
+          intervalMinutes: 30,
+        })),
+      memory: z
+        .object({
+          maxPreferences: z.number().int().positive().default(50),
+          maxEpisodes: z.number().int().positive().default(200),
+          distillModel: z.enum(['haiku']).default('haiku'),
+        })
+        .default(() => ({
+          maxPreferences: 50,
+          maxEpisodes: 200,
+          distillModel: 'haiku' as const,
+        })),
+      classifierModel: z.enum(['haiku']).default('haiku'),
+    })
+    .optional(),
 });
 
 export type OphanConfigInput = z.input<typeof OphanConfigSchema>;

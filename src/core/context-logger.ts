@@ -247,7 +247,7 @@ export class ContextLogger {
       proposals.push({
         id: this.generateProposalId(),
         type: 'guideline',
-        source: 'context-agent',
+        source: 'context-logger',
         targetFile: 'guidelines/context.md',
         change: `APPEND:
 
@@ -276,7 +276,7 @@ ${patternSuggestions ? `### Suggested Patterns\n\n${patternSuggestions}` : ''}
       proposals.push({
         id: this.generateProposalId(),
         type: 'guideline',
-        source: 'context-agent',
+        source: 'context-logger',
         targetFile: 'guidelines/context.md',
         change: `APPEND:
 
@@ -302,7 +302,7 @@ Consider removing these from default context packs to reduce token usage.
       proposals.push({
         id: this.generateProposalId(),
         type: 'criteria',
-        source: 'context-agent',
+        source: 'context-logger',
         targetFile: 'criteria/context-quality.md',
         change: `APPEND:
 

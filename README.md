@@ -48,8 +48,20 @@ npm install -g ophan
 # Initialize in your project
 ophan init
 
-# Run a task
+# Add a development goal
+ophan goals add "implement user authentication"
+
+# Run goal-driven development cycle
+ophan dev
+
+# Or run a single task directly
 ophan task "fix the login validation bug"
+
+# Chat with the Orchestrator
+ophan chat
+
+# Run the Orchestrator as a background daemon
+ophan daemon
 
 # Check status
 ophan status
@@ -73,19 +85,28 @@ my-project/
 ├── OPHAN.md                    # Agent entry point
 ├── .ophan.yaml                 # Configuration
 ├── .ophan/
-│   ├── guidelines/             # Agent CAN edit
-│   │   ├── coding.md
-│   │   ├── testing.md
+│   ├── guidelines/             # Agents CAN edit
+│   │   ├── coding.md           # Dev Agent coding patterns
+│   │   ├── testing.md          # Dev Agent testing patterns
+│   │   ├── planning.md         # Goal decomposition patterns
 │   │   ├── context.md          # Context compilation patterns
-│   │   └── learnings.md
-│   ├── criteria/               # Agent CANNOT edit (protected)
+│   │   ├── learnings.md        # Accumulated learnings
+│   │   ├── orchestration.md    # Orchestrator supervision rules
+│   │   └── communication.md    # Orchestrator conversation style
+│   ├── criteria/               # Agents CANNOT edit (protected)
 │   │   ├── quality.md
 │   │   ├── security.md
-│   │   └── context-quality.md  # Context agent metrics
+│   │   ├── context-quality.md
+│   │   └── orchestration-quality.md
+│   ├── goals/                  # Goal definition files (.md)
 │   ├── logs/                   # Task execution logs
-│   ├── context-logs/           # Context usage logs
 │   ├── digests/                # Outer loop reports
-│   └── state.json              # Runtime state
+│   ├── metrics/                # Performance metrics
+│   ├── orchestrator/           # Orchestrator Agent data
+│   │   ├── state.json          # Orchestrator-specific state
+│   │   ├── memory.json         # Cross-session memory (preferences, episodes)
+│   │   └── sessions/           # Conversation session logs
+│   └── state.json              # Dev Agent runtime state
 └── [your project files]
 ```
 
@@ -106,6 +127,34 @@ my-project/
 
 ### Expert in the Loop (EITL)
 The outer loop requires human oversight to approve criteria changes. This prevents the agent from lowering its own standards to achieve easier "success."
+
+### Multi-Agent Architecture
+
+Ophan uses a multi-agent architecture where each agent owns its own (G,C) pair and participates in the Two-Loop Paradigm:
+
+- **Dev Agent** — Goal-driven development agent that decomposes goals into tasks and executes them through the inner loop. Owns coding, testing, and planning guidelines.
+- **Orchestrator Agent** — Supervisory agent that converses with humans, reviews Dev Agent results, creates goals, and updates Dev Agent guidelines. Communicates via pluggable messaging adapters (CLI, with Slack/Telegram planned).
+
+The agents communicate through the shared filesystem: the Orchestrator writes goal files and guidelines, the Dev Agent reads them independently. Neither agent imports from the other.
+
+#### Orchestrator Pipeline
+
+Every message flows through a structured pipeline:
+
+1. **Intent Classification** — Cheap haiku call classifies the message (status query, goal request, feedback, question, chitchat, etc.)
+2. **Context Assembly** — Builds a complete picture: Dev Agent state, delta since last check, memory, goal conflicts, conversation history
+3. **Routing** — Status queries and confirmations skip the expensive reasoner; goal requests and feedback get intent-specific prompt templates
+4. **Self-Evaluation** — Heuristic checks score each response against the Orchestrator's own criteria
+5. **Memory Recording** — Feedback and preferences are distilled into cross-session memory
+
+#### Daemon Mode
+
+The Orchestrator can run as a standalone background process (`ophan daemon`) that periodically:
+- Wakes and loads current Dev Agent state from disk
+- Computes a delta (what changed since last check)
+- Decides whether to act (new failures, blocked goals, cost alerts)
+- Sends notifications via the messaging adapter
+- Sleeps until the next interval
 
 ## Configuration
 
@@ -138,6 +187,24 @@ escalations:
     - name: slack-alerts
       url: ${SLACK_WEBHOOK_URL}
       events: [escalation, digest]
+
+# Orchestrator Agent (optional)
+orchestrator:
+  enabled: false
+  model: sonnet
+  classifierModel: haiku
+  proactive:
+    enabled: false
+    intervalMinutes: 30
+  conversation:
+    maxContextMessages: 30
+    maxSessionsRetained: 50
+  daemon:
+    intervalMinutes: 30
+  memory:
+    maxPreferences: 50
+    maxEpisodes: 200
+    distillModel: haiku
 ```
 
 ## Commands
@@ -145,12 +212,17 @@ escalations:
 | Command | Description |
 |---------|-------------|
 | `ophan init` | Initialize Ophan in current project |
-| `ophan task "<description>"` | Run a task through inner loop |
+| `ophan dev` | Run a goal-driven development cycle |
+| `ophan goals` | List all goals |
+| `ophan goals add "<title>"` | Create a new goal file |
+| `ophan goals show <id>` | Show goal details and progress |
+| `ophan task "<description>"` | Run a single task through inner loop |
+| `ophan chat` | Start a conversation with the Orchestrator |
+| `ophan daemon` | Run the Orchestrator as a background daemon |
 | `ophan review` | Run outer loop (pattern detection) |
 | `ophan status` | Show metrics and status |
 | `ophan logs` | View recent task logs |
 | `ophan ui` | Open web UI for configuration and monitoring |
-| `ophan approve <id>` | Approve a criteria change proposal |
 | `ophan context-stats` | View context usage statistics |
 
 ### Command Options
@@ -161,9 +233,38 @@ escalations:
 - `-y, --yes` — Skip confirmation prompts
 - `-p, --project <path>` — Path to the project directory
 
+**`ophan dev`**
+- `-g, --goal <id>` — Focus on a specific goal
+- `--plan-only` — Plan without executing (dry run)
+- `--max-tasks <number>` — Max tasks per run (default: 5)
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan goals`**
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan goals add`**
+- `-d, --description <text>` — Goal description
+- `-c, --criteria <items>` — Comma-separated acceptance criteria
+- `--priority <number>` — Priority (lower = higher priority, default: 10)
+- `--tags <tags>` — Comma-separated tags
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan goals show`**
+- `-p, --project <path>` — Path to the project directory
+
 **`ophan task`**
 - `-n, --dry-run` — Show what would be done without executing
 - `-m, --max-iterations <number>` — Override max iterations
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan chat`**
+- `--resume` — Resume the most recent session
+- `--proactive` — Enable proactive monitoring during session
+- `--proactive-interval <minutes>` — Proactive check interval (default: 30)
+- `-p, --project <path>` — Path to the project directory
+
+**`ophan daemon`**
+- `--interval <minutes>` — Check interval in minutes (default: from config or 30)
 - `-p, --project <path>` — Path to the project directory
 
 **`ophan review`**
@@ -269,14 +370,30 @@ Ophan uses Claude Code (subscription-based) for task execution:
 
 ## How It Works
 
-### Context Agent
+### Orchestrator Agent
 
-Ophan includes a self-improving context agent that learns which files are relevant for different tasks. After each task, it tracks:
+The Orchestrator is a supervisory agent that sits on top of the Dev Agent. It provides a conversational interface for managing development:
+
+- **Goal Creation** — Describe what you want to build and the Orchestrator creates structured goals for the Dev Agent, with conflict detection against existing goals
+- **DevAgent Supervision** — Reviews task results, success rates, and costs; suggests guideline improvements when patterns emerge
+- **Intent-Aware Routing** — Messages are classified (haiku) before the main reasoner, so status queries and chitchat skip the expensive reasoning path
+- **Cross-Session Memory** — Preferences, episodes, and patterns are distilled from conversations and persisted across sessions
+- **Goal Lifecycle** — Detects goal conflicts, stale goals, and retirement candidates
+- **Self-Evaluation** — Scores its own responses against orchestration criteria; runs aggregate analysis during outer loop reviews
+- **Daemon Mode** — Runs standalone as `ophan daemon`, periodically checking Dev Agent state and sending proactive alerts
+- **Guideline Updates** — Updates Dev Agent guidelines based on observed patterns (with your approval)
+- **Criteria Proposals** — Proposes criteria changes through the standard EITL approval process
+
+In-chat commands: `/status`, `/goals`, `/help`, `/quit`
+
+### Context Analysis
+
+Ophan tracks which files are relevant for different tasks. After each task, it measures:
 
 - **Hit Rate**: % of provided files that were actually used (target: >70%)
 - **Miss Rate**: % of used files that weren't provided (target: <20%)
 
-Over time, the context agent proposes updates to context guidelines based on usage patterns. View statistics with `ophan context-stats`.
+Over time, context guidelines are updated based on usage patterns. View statistics with `ophan context-stats`.
 
 ### Inner Loop (Task Execution)
 
@@ -338,8 +455,10 @@ For detailed documentation, see:
 - **Phase 1D: Escalations** — Webhook notifications
 - **Phase 1E: Polish** — Testing, documentation
 - **Phase 1F: Web UI** — Dashboard, config editor, log viewer
-
-**Test Coverage:** 87 tests passing
+- **Phase 2A: Multi-Agent Architecture** — Agent framework, registry, (G,C) per agent
+- **Phase 2B: Goal-Driven Dev Agent** — Goal planning, decomposition, assessment
+- **Phase 2C: Orchestrator Agent** — Supervisory agent, CLI chat, proactive monitoring
+- **Phase 2D: Orchestrator Two-Loop Compliance** — Intent classification, context assembly, memory, goal lifecycle, self-evaluation, daemon mode
 
 ## License
 

@@ -350,7 +350,7 @@ Important:
       const proposals: Proposal[] = (parsed.recommendations ?? []).map(r => ({
         id: `proposal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type: r.type === 'criteria' ? 'criteria' : 'guideline',
-        source: 'task-agent' as const,
+        source: 'dev-agent' as const,
         targetFile: r.targetFile,
         change: r.change,
         reason: r.reason,

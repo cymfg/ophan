@@ -123,6 +123,9 @@ async function runInit(options: InitOptions): Promise<void> {
     const paths = getOphanPaths(projectRoot);
 
     // Create directories
+    const goalsDir = join(paths.stateDir, 'goals');
+    const orchestratorDir = join(paths.stateDir, 'orchestrator');
+    const sessionsDir = join(orchestratorDir, 'sessions');
     for (const dir of [
       paths.stateDir,
       paths.guidelines,
@@ -130,6 +133,9 @@ async function runInit(options: InitOptions): Promise<void> {
       paths.logs,
       paths.digests,
       paths.metrics,
+      goalsDir,
+      orchestratorDir,
+      sessionsDir,
     ]) {
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
@@ -179,9 +185,11 @@ async function runInit(options: InitOptions): Promise<void> {
     for (const filename of Object.keys(criteriaFiles)) {
       logger.success(`.ophan/criteria/${filename}`);
     }
+    logger.success('.ophan/goals/');
 
     logger.blank();
-    logger.info('Run `ophan task "your first task"` to begin.');
+    logger.info('Add a goal with: ophan goals add "your first goal"');
+    logger.info('Or run a task directly: ophan task "your first task"');
   } catch (error) {
     spinner.fail('Failed to initialize Ophan');
     throw error;
@@ -357,7 +365,97 @@ Learnings are automatically added by Ophan's inner loop.
 
 ---
 `,
+
+    'planning.md': `# Planning Guidelines
+
+Guidelines for how the Dev Agent decomposes goals into tasks.
+
+## Task Granularity
+
+- Each task should be completable in 1-3 inner loop iterations
+- Prefer more smaller tasks over fewer large ones
+- Tasks should have clear, measurable completion criteria
+
+## Task Dependencies
+
+- Minimize dependencies between tasks
+- Foundation tasks (types, schemas) should come before implementation
+- Tests should be separate tasks after their implementation tasks
+
+## Goal Assessment
+
+- A goal is complete when all acceptance criteria are met
+- Partial completion is acceptable — remaining work becomes new tasks
+- If a task fails repeatedly, escalate rather than retry indefinitely
+`,
   };
+
+  // Orchestrator guidelines (always included)
+  baseGuidelines['orchestration.md'] = `# Orchestration Guidelines
+
+How the Orchestrator Agent supervises the Dev Agent.
+
+## Goal Creation
+
+- Create goals that are specific, measurable, and achievable
+- Break large objectives into multiple focused goals
+- Include clear acceptance criteria for every goal
+- Set appropriate priority levels (1-20, lower = higher priority)
+- Consider goal dependencies — foundation work first
+
+## DevAgent Supervision
+
+- Monitor goal progress and task success rates
+- When a goal is blocked, investigate root causes before creating workarounds
+- If task failure rate exceeds 50%, review and update DevAgent guidelines
+- Track cost per goal to identify expensive patterns
+
+## Guideline Updates
+
+- Update DevAgent guidelines when patterns of failure emerge
+- Be specific — add concrete examples and steps, not vague advice
+- Prefer appending new sections over replacing existing content
+- Always explain the reason for guideline changes
+
+## Escalation
+
+- Escalate to the human when:
+  - A goal has failed 3+ tasks with no progress
+  - Cost per goal exceeds expected limits
+  - DevAgent health is "critical"
+  - Conflicting goals are detected
+`;
+
+  baseGuidelines['communication.md'] = `# Communication Guidelines
+
+How the Orchestrator Agent communicates with humans.
+
+## Conversational Style
+
+- Be concise and action-oriented
+- Lead with the most important information
+- Use markdown formatting for readability
+- When proposing actions, clearly explain what will happen
+
+## Status Reporting
+
+- Summarize metrics in context (e.g., "success rate dropped from 85% to 60%")
+- Highlight blockers and issues before good news
+- Include actionable suggestions, not just observations
+
+## Proposing Changes
+
+- Always explain the "why" before the "what"
+- Present proposed goals with full details (title, description, criteria)
+- For guideline updates, show what will change and the expected impact
+- Make it easy for the human to approve or reject
+
+## Proactive Communication
+
+- Only send proactive alerts for genuine issues
+- Avoid alert fatigue — deduplicate and batch similar alerts
+- Include specific suggestions for resolving issues
+`;
 
   if (template === 'typescript') {
     baseGuidelines['coding.md'] = `# TypeScript Coding Guidelines
@@ -534,6 +632,44 @@ Never allow:
 `,
   };
 
+  // Orchestrator criteria (always included)
+  baseCriteria['orchestration-quality.md'] = `# Orchestration Quality Criteria
+
+Standards for the Orchestrator Agent's goal creation and supervision.
+
+## Goal Quality
+
+- Goals must have clear, testable acceptance criteria
+- Goal descriptions must be specific enough for the DevAgent to decompose
+- Priority must reflect actual business value
+- Goals should not duplicate existing active goals
+
+## Recommendation Quality
+
+- Guideline updates must be grounded in observed patterns (not speculative)
+- Suggestions must include supporting evidence (metrics, failure logs)
+- Proposed changes should be proportional to the problem
+
+## Communication Quality
+
+- Responses must be relevant to the user's message
+- Status reports must include current metrics
+- Proposed actions must be clearly labeled and explained
+
+## Evaluation Method
+
+After each conversation:
+1. Were goals created successfully decomposed by DevAgent?
+2. Did guideline updates improve DevAgent performance?
+3. Were proactive alerts actionable and timely?
+
+## Improvement Triggers
+
+- If >30% of created goals are abandoned, goal quality needs improvement
+- If guideline updates don't improve success rate, recommendation approach needs revision
+- If users frequently reject proposed actions, communication needs improvement
+`;
+
   if (template === 'typescript') {
     baseCriteria['quality.md'] = `# TypeScript Quality Criteria
 
@@ -587,30 +723,43 @@ Ophan uses the Two-Loop Paradigm for self-improvement.
 Guidelines define the agent's workflows, data structures, and constraints.
 The agent can freely update these based on learnings.
 
-### Task Execution Agent
+### Dev Agent
 - [Coding Guidelines](.ophan/guidelines/coding.md)
 - [Testing Guidelines](.ophan/guidelines/testing.md)
+- [Planning Guidelines](.ophan/guidelines/planning.md)
+- [Context Guidelines](.ophan/guidelines/context.md)
 - [Learnings](.ophan/guidelines/learnings.md)
 
-### Context Agent
-- [Context Guidelines](.ophan/guidelines/context.md)
+### Orchestrator Agent
+- [Orchestration Guidelines](.ophan/guidelines/orchestration.md)
+- [Communication Guidelines](.ophan/guidelines/communication.md)
 
 ## Criteria (What Good Looks Like)
 
 Criteria define quality standards and evaluation methods.
 Only humans (EITL) can approve changes to criteria.
 
-### Task Execution Agent
+### Dev Agent
 - [Quality Criteria](.ophan/criteria/quality.md)
 - [Security Criteria](.ophan/criteria/security.md)
-
-### Context Agent
 - [Context Quality Criteria](.ophan/criteria/context-quality.md)
+
+### Orchestrator Agent
+- [Orchestration Quality Criteria](.ophan/criteria/orchestration-quality.md)
+
+## Goals
+
+Goals are defined as markdown files in \`.ophan/goals/\`.
+The Dev Agent decomposes goals into tasks and executes them.
 
 ## Commands
 
 \`\`\`bash
-ophan task "description"  # Run a task through the inner loop
+ophan dev                 # Run a goal-driven development cycle
+ophan goals               # List all goals
+ophan goals add "title"   # Create a new goal
+ophan task "description"  # Run a single task directly
+ophan chat                # Start a conversation with the Orchestrator
 ophan review              # Run the outer loop (pattern detection)
 ophan status              # View metrics and status
 ophan logs                # View recent task logs

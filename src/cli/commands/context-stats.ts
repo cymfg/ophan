@@ -19,7 +19,7 @@ interface ContextStatsOptions {
 }
 
 export const contextStatsCommand = new Command('context-stats')
-  .description('Show context usage statistics for the context agent')
+  .description('Show context usage statistics')
   .option('-d, --days <number>', 'Number of days to analyze (default: 30)', parseInt)
   .option('--json', 'Output as JSON')
   .option(
@@ -77,7 +77,7 @@ async function runContextStats(options: ContextStatsOptions): Promise<void> {
 
   // Header
   console.log();
-  console.log(gold.bold('Context Agent Statistics'));
+  console.log(gold.bold('Context Statistics'));
   console.log(gold('═'.repeat(45)));
   console.log();
 

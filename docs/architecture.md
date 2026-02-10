@@ -13,8 +13,7 @@ flowchart TB
 
     subgraph "Agent Framework"
         AR[Agent Registry]
-        TA[Task Agent]
-        CA[Context Agent]
+        DA[Dev Agent]
     end
 
     subgraph "Inner Loop"
@@ -48,11 +47,9 @@ flowchart TB
 
     CLI --> AR
     UI --> AR
-    AR --> TA
-    AR --> CA
+    AR --> DA
 
-    TA --> IL
-    CA --> CtxLogs
+    DA --> IL
 
     IL --> Claude
     IL --> Tools
@@ -140,18 +137,12 @@ classDiagram
         +executeTask(description): Promise
     }
 
-    class TaskAgent {
-        +id: "task-agent"
-        +guidance: coding.md, testing.md, learnings.md
+    class DevAgent {
+        +id: "dev-agent"
+        +guidance: coding.md, testing.md, learnings.md, planning.md
+        +run(): DevRunResult
         +executeTask(): InnerLoopResult
         +runOuterLoop(): Proposals
-    }
-
-    class ContextAgent {
-        +id: "context-agent"
-        +guidance: context.md
-        +runOuterLoop(): Proposals
-        +getMetrics(): HitRate, MissRate
     }
 
     class AgentRegistry {
@@ -163,8 +154,7 @@ classDiagram
     }
 
     BaseAgent <|-- ExecutableAgent
-    ExecutableAgent <|.. TaskAgent
-    BaseAgent <|.. ContextAgent
+    ExecutableAgent <|.. DevAgent
     AgentRegistry o-- BaseAgent
 ```
 
@@ -272,7 +262,95 @@ classDiagram
     OuterLoop --> LearningManager
 ```
 
+## Goal System
+
+The Dev Agent is goal-driven. Goals are defined as human-editable Markdown files in `.ophan/goals/`:
+
+```mermaid
+flowchart TB
+    subgraph "Goal Lifecycle"
+        Define[Define Goal] --> Plan[Plan: Decompose into Tasks]
+        Plan --> Execute[Execute Tasks via Inner Loop]
+        Execute --> Assess[Assess Completion]
+        Assess --> |"Not done"| Execute
+        Assess --> |"Done"| Complete([Goal Completed])
+    end
+
+    subgraph "Goal Files (.ophan/goals/*.md)"
+        YAML[YAML Frontmatter]
+        Desc[Description]
+        AC[Acceptance Criteria]
+    end
+
+    Define --> YAML
+    Define --> Desc
+    Define --> AC
+```
+
+**Goal File Format:**
+
+```markdown
+---
+id: goal-auth-api
+title: Add authentication to API endpoints
+priority: 5
+tags: [feature, auth]
+---
+
+## Description
+All API endpoints should require JWT authentication...
+
+## Acceptance Criteria
+- [ ] All routes check for valid JWT
+- [ ] Token validation middleware is tested
+- [ ] 401 response for missing/invalid tokens
+```
+
+**Planning Logic (deterministic, no LLM):**
+
+1. Load goals from `.ophan/goals/*.md`
+2. Reconcile with `state.json`
+3. If goals need planning → pick highest-priority → decompose via Claude
+4. If goals have pending tasks → pick highest-priority goal's next task → execute
+5. If all goals completed/abandoned → idle
+6. If all active goals blocked → blocked
+
 ## Data Flow
+
+### Goal-Driven Development Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant DevAgent
+    participant InnerLoop
+    participant Claude
+    participant Storage
+
+    User->>CLI: ophan dev
+    CLI->>DevAgent: run()
+    DevAgent->>Storage: Load goals from .ophan/goals/*.md
+    DevAgent->>Storage: Load state.json
+    DevAgent->>DevAgent: Reconcile goals with state
+
+    alt Goal needs planning
+        DevAgent->>Claude: Decompose goal into tasks
+        Claude-->>DevAgent: GoalTask[]
+        DevAgent->>Storage: Save tasks to state
+    end
+
+    alt Goal has pending tasks
+        DevAgent->>InnerLoop: Execute next task
+        InnerLoop-->>DevAgent: Task result
+        DevAgent->>Claude: Assess goal completion
+        Claude-->>DevAgent: Assessment
+    end
+
+    DevAgent->>Storage: Save updated state
+    DevAgent-->>CLI: DevRunResult
+    CLI-->>User: Summary
+```
 
 ### Task Execution Flow
 
@@ -360,18 +438,21 @@ project/
 ├── OPHAN.md                      # Agent entry point
 ├── .ophan.yaml                   # Configuration
 └── .ophan/
+    ├── goals/                    # Goal definitions (human-editable)
+    │   └── *.md                 # Goal files with YAML frontmatter
     ├── guidelines/               # Agent CAN edit
-    │   ├── coding.md            # Coding workflows (Task Agent)
-    │   ├── testing.md           # Testing practices (Task Agent)
-    │   ├── context.md           # Context patterns (Context Agent)
+    │   ├── coding.md            # Coding workflows (Dev Agent)
+    │   ├── testing.md           # Testing practices (Dev Agent)
+    │   ├── planning.md          # Planning workflows (Dev Agent)
+    │   ├── context.md           # Context patterns
     │   └── learnings.md         # Extracted learnings
     ├── criteria/                 # Agent CANNOT edit
-    │   ├── quality.md           # Quality standards (Task Agent)
-    │   ├── security.md          # Security requirements (Task Agent)
-    │   └── context-quality.md   # Context metrics (Context Agent)
+    │   ├── quality.md           # Quality standards (Dev Agent)
+    │   ├── security.md          # Security requirements (Dev Agent)
+    │   └── context-quality.md   # Context metrics
     ├── logs/                     # Task execution logs
     │   └── task-YYYYMMDD-*.json
-    ├── context-logs/             # Context usage logs (Context Agent)
+    ├── context-logs/             # Context usage logs
     │   └── task-*.json
     ├── digests/                  # Outer loop reports
     │   └── YYYY-MM-DD.md

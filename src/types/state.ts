@@ -21,7 +21,7 @@ export const ProposalSchema = z.object({
   id: z.string(),
   type: z.enum(['guideline', 'criteria']),
   /** Which agent generated this proposal */
-  source: z.enum(['task-agent', 'context-agent']).default('task-agent'),
+  source: z.enum(['dev-agent', 'task-agent', 'context-logger', 'orchestrator']).default('task-agent'),
   targetFile: z.string(),
   change: z.string(),
   reason: z.string(),
@@ -56,12 +56,41 @@ export const MetricsSchema = z.object({
   periodEnd: z.string().datetime(),
 });
 
+export const GoalTaskSchema = z.object({
+  id: z.string(),
+  goalId: z.string(),
+  description: z.string(),
+  order: z.number().int(),
+  status: z.enum(['pending', 'running', 'converged', 'failed', 'escalated', 'skipped']),
+  rationale: z.string(),
+  dependsOn: z.array(z.string()).optional(),
+  innerLoopTaskId: z.string().optional(),
+  result: z.object({
+    success: z.boolean(),
+    iterations: z.number(),
+    cost: z.number(),
+    summary: z.string(),
+  }).optional(),
+});
+
+export const GoalStateSchema = z.object({
+  goalId: z.string(),
+  status: z.enum(['pending', 'planning', 'in_progress', 'blocked', 'completed', 'abandoned']),
+  tasks: z.array(GoalTaskSchema).default([]),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional(),
+  totalCost: z.number().nonnegative().default(0),
+  totalTokens: z.number().int().nonnegative().default(0),
+});
+
 export const OphanStateSchema = z.object({
   version: z.string().default('0.1.0'),
   lastReview: z.string().datetime().nullable().default(null),
   tasksSinceReview: z.number().int().nonnegative().default(0),
   pendingProposals: z.array(ProposalSchema).default([]),
   learnings: z.array(LearningSchema).default([]),
+  goals: z.array(GoalStateSchema).default([]),
+  lastPlanningRun: z.string().datetime().optional(),
   metrics: MetricsSchema.default(() => {
     const now = new Date().toISOString();
     return {
@@ -100,6 +129,7 @@ export function createInitialState(): OphanStateOutput {
     tasksSinceReview: 0,
     pendingProposals: [],
     learnings: [],
+    goals: [],
     metrics: {
       totalTasks: 0,
       successfulTasks: 0,

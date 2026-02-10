@@ -85,7 +85,7 @@ flowchart TB
 Ophan uses Claude Code (subscription-based) for task execution:
 - No API key required (uses Claude Code subscription)
 - Full tool access via Claude Code's built-in tools
-- File usage is tracked for context agent evaluation
+- File usage is tracked for context usage analysis
 - Cost limits enforced via Claude Code's budget system
 
 ### 3. Tool Execution
@@ -301,7 +301,7 @@ flowchart LR
 
 ## Context Usage Logging
 
-After each task, the inner loop logs context usage for the Context Agent:
+After each task, the inner loop logs context usage for analysis by the outer loop:
 
 ```mermaid
 flowchart TB
@@ -328,7 +328,7 @@ flowchart TB
 | Miss Rate | % of used files that weren't provided | <20% |
 | Exploration Tokens | Tokens spent on discovery before first write | Minimize |
 
-This data enables the Context Agent to learn which files are relevant for different task types.
+This data enables the outer loop to learn which files are relevant for different task types.
 
 ## System Prompt Structure
 
